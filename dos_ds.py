@@ -6,11 +6,16 @@ count = 100
 while True:
     package_load_arr = []
     unique_package_load = []
+    package_no_load = 0
 
-    package = scp.sniff(filter="udp", count=count)
+    package = scp.sniff(count=count)
 
     for j in range(count):
-        package_load_arr.append(package[j].load)
+        try:
+            package_load_arr.append(package[j])
+        except:
+            print("Package without load:", package[j].summary())
+            package_no_load += 1
 
     def unique(list1):
         unique_list = []
@@ -23,4 +28,4 @@ while True:
 
     unique(package_load_arr)
 
-    print(len(unique_package_load))
+    print(len(unique_package_load) + package_no_load)
