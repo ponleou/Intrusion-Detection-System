@@ -3,7 +3,7 @@ import random
 
 MAX_PORT = 65535
 
-ip_src = input("Fake Source IP (blank for your IP): ")
+ip_src = input("Fake Source IP (blank for random IP): ")
 ip_dst = input("Target IP: ")
 
 attack_type = input(
