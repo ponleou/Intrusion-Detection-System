@@ -1,7 +1,7 @@
 import scapy.all as scp
 import datetime as dt
 
-count = 100
+count = 100  # packet frames per loop to scan
 MAX_PKTFRAME_LENGTH = 1518
 threshold = 80  # percentage (lower means more sensitive)
 
