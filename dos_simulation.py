@@ -45,4 +45,4 @@ def dos_simulation(ip_src, ip_dst, pkt_size):
     print(packet)
 
 
-dos_simulation(ip_src, ip_dst, pkg_size)
+dos_simulation(ip_src, ip_dst, pkt_size)
