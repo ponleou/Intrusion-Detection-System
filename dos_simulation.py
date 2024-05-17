@@ -15,7 +15,7 @@ if not (attack_type == "2") and not (attack_type == "3"):
     pkg_size = input("Packet Size (blank for max): ")
 
 if not (pkg_size):
-    pkg_size = MAX_PORT - 535
+    pkg_size = random.randint(MAX_PORT - 10000, MAX_PORT - 535)
 
 
 def dos_simulation(ip_src, ip_dst, pkg_size):
