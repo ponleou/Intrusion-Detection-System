@@ -54,12 +54,35 @@ def ack_flag_packet(packets):
     return filtered_packets
 
 
+def find_packet_with_dst_ip(packets, ip_dst):
+    src_ip_packet_found = []
+
+    for packet in packets:
+        if packet.getlayer(scp.IP).dst == ip_dst:
+            src_ip_packet_found.append(packet)
+
+    return src_ip_packet_found
+
+
 while True:
-    packets = scp.sniff(count=100)
+    packets = scp.sniff(count=1000)
 
     tcp_packets = tcp_filter(packets)
-    print(
-        len(syn_flag_packet(tcp_packets)),
-        len(syn_ack_flag_packet(tcp_packets)),
-        len(ack_flag_packet(tcp_packets)),
-    )
+
+    syn_packets = syn_flag_packet(tcp_packets)
+    syn_ack_packets = syn_ack_flag_packet(tcp_packets)
+    ack_packets = ack_flag_packet(tcp_packets)
+
+    if not (len(syn_flag_packet(tcp_packets)) == 0) and not (
+        len(syn_ack_flag_packet(tcp_packets)) == 0
+    ):
+        dst_ip_packets = find_packet_with_dst_ip(
+            ack_packets, syn_packets[0].getlayer(scp.IP).dst
+        )
+        print("SYN Packet:")
+        print(syn_packets[0])
+        print("SYN-ACK Packet:")
+        print(syn_ack_packets[0])
+        print("ACK Packet:")
+        print(dst_ip_packets[0])
+        print("..............")
