@@ -66,13 +66,12 @@ def find_packet(packets, ip_src, ip_dst):
 
 
 def tcp_handshake_checker(syn_packets, syn_ack_packets, ack_packets):
-
     if len(syn_packets) == 0:
         print(datetime.now(), "No SYN packet")
-
         return
 
     for syn_packet in syn_packets:
+
         syn_packet_src_ip = syn_packet.getlayer(scp.IP).src
         syn_packet_dst_ip = syn_packet.getlayer(scp.IP).dst
 
@@ -87,7 +86,7 @@ def tcp_handshake_checker(syn_packets, syn_ack_packets, ack_packets):
                 + syn_packet_src_ip
                 + " SYN packet",
             )
-            break
+            continue
 
         cor_ack_packet = find_packet(ack_packets, syn_packet_src_ip, syn_packet_dst_ip)
 
@@ -98,7 +97,7 @@ def tcp_handshake_checker(syn_packets, syn_ack_packets, ack_packets):
                 + syn_packet_dst_ip
                 + " SYN/ACK packet",
             )
-            break
+            continue
 
         print(
             datetime.now(),
@@ -110,7 +109,7 @@ def tcp_handshake_checker(syn_packets, syn_ack_packets, ack_packets):
 
 
 while True:
-    packets = scp.sniff(count=100)
+    packets = scp.sniff(count=1000)
 
     tcp_packets = tcp_filter(packets)
 
