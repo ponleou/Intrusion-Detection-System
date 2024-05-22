@@ -85,7 +85,7 @@ def find_flag_thread(packet, flag):
     if flag_packet_found:
         return
 
-    if verbose >= 2:
+    if verbose >= 1:
         print(datetime.now(), "No " + flag_name + " packet found after timeout")
 
     global failed_packets
@@ -99,7 +99,7 @@ def logging_ack_found(packet):
     if not check_flag(packet, "A"):
         return
 
-    if verbose >= 1:
+    if verbose >= 2:
         print(
             datetime.now(),
             "Successful TCP handshake between "
