@@ -15,38 +15,12 @@ def tcp_filter(packets):
     return filtered_packets
 
 
-def syn_packet_filter(packets):
+def packet_flag_filter(packets, flag):
     filtered_packets = []
 
     for packet in packets:
         try:
-            if packet.getlayer(scp.TCP).flags == "S":
-                filtered_packets.append(packet)
-        except:
-            pass
-
-    return filtered_packets
-
-
-def syn_ack_packet_filter(packets):
-    filtered_packets = []
-
-    for packet in packets:
-        try:
-            if packet.getlayer(scp.TCP).flags == "SA":
-                filtered_packets.append(packet)
-        except:
-            pass
-
-    return filtered_packets
-
-
-def ack_packet_filter(packets):
-    filtered_packets = []
-
-    for packet in packets:
-        try:
-            if packet.getlayer(scp.TCP).flags == "A":
+            if packet.getlayer(scp.TCP).flags == flag:
                 filtered_packets.append(packet)
         except:
             pass
@@ -115,8 +89,8 @@ while True:
 
     tcp_packets = tcp_filter(packets)
 
-    syn_packets = syn_packet_filter(tcp_packets)
-    syn_ack_packets = syn_ack_packet_filter(tcp_packets)
-    ack_packets = ack_packet_filter(tcp_packets)
+    syn_packets = packet_flag_filter(tcp_packets, "S")
+    syn_ack_packets = packet_flag_filter(tcp_packets, "SA")
+    ack_packets = packet_flag_filter(tcp_packets, "A")
 
     tcp_handshake_checker(syn_packets, syn_ack_packets, ack_packets)
