@@ -5,6 +5,7 @@ import threading
 timeout = 2  # seconds
 
 
+# temporary (until we integrate flag check in sniff())
 def check_flag(packet, flag):
     if packet.getlayer(scp.TCP).flags == flag:
         return packet
@@ -19,18 +20,30 @@ def start_syn_ack_thread(packet):
     if not check_flag(packet, "S"):
         return
 
-    threading.Thread(target=await_syn_ack, args=(packet,)).start()
+    thread = threading.Thread(target=find_syn_ack_thread, args=(packet,))
+    thread.start()
 
 
-def await_syn_ack(packet):
+# executed in thread (1)
+def find_syn_ack_thread(packet):
     packet_src = packet.getlayer(scp.IP).src
     packet_dst = packet.getlayer(scp.IP).dst
 
-    scp.sniff(filter="tcp", prn=find_syn_ack)
+    # sniff to find SYN/ACK
+    scp.sniff(
+        filter="tcp and src host " + packet_dst + " and dst host " + packet_src,
+        prn=find_syn_ack,
+        timeout=timeout,
+    )
 
 
+# executed in thread (1)
 def find_syn_ack(packet):
-    pass
+    # checking if packet is a SYN/ACK flag tcp
+    if not check_flag(packet, "SA"):
+        return
+
+    print(datetime.now(), "SYN/ACK found")
 
 
 scp.sniff(prn=start_syn_ack_thread, filter="tcp")
