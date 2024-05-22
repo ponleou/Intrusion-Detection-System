@@ -75,7 +75,7 @@ def find_ack_thread(packet):
     # sniff to find SYN/ACK
     packets = scp.sniff(
         filter="tcp and src host " + packet_src + " and dst host " + packet_dst,
-        prn=find_syn_ack,
+        prn=find_ack,
         timeout=timeout,
     )
 
