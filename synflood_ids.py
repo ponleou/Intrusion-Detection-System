@@ -15,7 +15,7 @@ def tcp_filter(packets):
     return filtered_packets
 
 
-def syn_flag_packet(packets):
+def syn_packet_filter(packets):
     filtered_packets = []
 
     for packet in packets:
@@ -28,7 +28,7 @@ def syn_flag_packet(packets):
     return filtered_packets
 
 
-def syn_ack_flag_packet(packets):
+def syn_ack_packet_filter(packets):
     filtered_packets = []
 
     for packet in packets:
@@ -41,7 +41,7 @@ def syn_ack_flag_packet(packets):
     return filtered_packets
 
 
-def ack_flag_packet(packets):
+def ack_packet_filter(packets):
     filtered_packets = []
 
     for packet in packets:
@@ -54,38 +54,68 @@ def ack_flag_packet(packets):
     return filtered_packets
 
 
-def find_packet_with_dst_ip(ack_packets, ip_src, ip_dst):
-    src_ip_packet_found = None
+def find_packet(packets, ip_src, ip_dst):
+    packet_found = None
 
-    for packet in ack_packets:
+    for packet in packets:
         packet_ip_layer = packet.getlayer(scp.IP)
         if packet_ip_layer.dst == ip_dst and packet_ip_layer.src == ip_src:
-            src_ip_packet_found = packet
+            packet_found = packet
 
-    return src_ip_packet_found
+    return packet_found
+
+
+def tcp_handshake_checker(syn_packets, syn_ack_packets, ack_packets):
+
+    if len(syn_packets) == 0:
+        print(datetime.now(), "No SYN packet")
+
+        return
+
+    for syn_packet in syn_packets:
+        syn_packet_src_ip = syn_packet.getlayer(scp.IP).src
+        syn_packet_dst_ip = syn_packet.getlayer(scp.IP).dst
+
+        cor_syn_ack_packet = find_packet(
+            syn_ack_packets, syn_packet_dst_ip, syn_packet_src_ip
+        )
+
+        if cor_syn_ack_packet == None:
+            print(
+                datetime.now(),
+                "Missing SYN/ACK packet response from "
+                + syn_packet_src_ip
+                + " SYN packet",
+            )
+            break
+
+        cor_ack_packet = find_packet(ack_packets, syn_packet_src_ip, syn_packet_dst_ip)
+
+        if cor_ack_packet == None:
+            print(
+                datetime.now(),
+                "Missing ACK packet response from "
+                + syn_packet_dst_ip
+                + " SYN/ACK packet",
+            )
+            break
+
+        print(
+            datetime.now(),
+            "TCP handshake completed between "
+            + syn_packet_src_ip
+            + " and "
+            + syn_packet_dst_ip,
+        )
 
 
 while True:
-    packets = scp.sniff(count=1000)
+    packets = scp.sniff(count=100)
 
     tcp_packets = tcp_filter(packets)
 
-    syn_packets = syn_flag_packet(tcp_packets)
-    syn_ack_packets = syn_ack_flag_packet(tcp_packets)
-    ack_packets = ack_flag_packet(tcp_packets)
+    syn_packets = syn_packet_filter(tcp_packets)
+    syn_ack_packets = syn_ack_packet_filter(tcp_packets)
+    ack_packets = ack_packet_filter(tcp_packets)
 
-    if not (len(syn_flag_packet(tcp_packets)) == 0) and not (
-        len(syn_ack_flag_packet(tcp_packets)) == 0
-    ):
-        dst_ip_packets = find_packet_with_dst_ip(
-            ack_packets,
-            syn_packets[0].getlayer(scp.IP).src,
-            syn_packets[0].getlayer(scp.IP).dst,
-        )
-        print("SYN Packet:")
-        print(syn_packets[0])
-        print("SYN-ACK Packet:")
-        print(syn_ack_packets[0])
-        print("ACK Packet:")
-        print(dst_ip_packets)
-        print("..............")
+    tcp_handshake_checker(syn_packets, syn_ack_packets, ack_packets)
