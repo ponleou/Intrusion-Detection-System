@@ -54,12 +54,13 @@ def ack_flag_packet(packets):
     return filtered_packets
 
 
-def find_packet_with_dst_ip(packets, ip_dst):
-    src_ip_packet_found = []
+def find_packet_with_dst_ip(ack_packets, ip_src, ip_dst):
+    src_ip_packet_found = None
 
-    for packet in packets:
-        if packet.getlayer(scp.IP).dst == ip_dst:
-            src_ip_packet_found.append(packet)
+    for packet in ack_packets:
+        packet_ip_layer = packet.getlayer(scp.IP)
+        if packet_ip_layer.dst == ip_dst and packet_ip_layer.src == ip_src:
+            src_ip_packet_found = packet
 
     return src_ip_packet_found
 
@@ -77,12 +78,14 @@ while True:
         len(syn_ack_flag_packet(tcp_packets)) == 0
     ):
         dst_ip_packets = find_packet_with_dst_ip(
-            ack_packets, syn_packets[0].getlayer(scp.IP).dst
+            ack_packets,
+            syn_packets[0].getlayer(scp.IP).src,
+            syn_packets[0].getlayer(scp.IP).dst,
         )
         print("SYN Packet:")
         print(syn_packets[0])
         print("SYN-ACK Packet:")
         print(syn_ack_packets[0])
         print("ACK Packet:")
-        print(dst_ip_packets[0])
+        print(dst_ip_packets)
         print("..............")
