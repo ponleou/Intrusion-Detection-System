@@ -82,7 +82,8 @@ def tcp_handshake_checker(syn_packets, syn_ack_packets, ack_packets):
         if cor_syn_ack_packet == None:
             print(
                 datetime.now(),
-                "Missing SYN/ACK packet response from "
+                syn_packet_dst_ip
+                + " failed to respond with SYN/ACK packet from "
                 + syn_packet_src_ip
                 + " SYN packet",
             )
@@ -93,7 +94,8 @@ def tcp_handshake_checker(syn_packets, syn_ack_packets, ack_packets):
         if cor_ack_packet == None:
             print(
                 datetime.now(),
-                "Missing ACK packet response from "
+                syn_packet_src_ip
+                + " failed to respond with ACK packet from "
                 + syn_packet_dst_ip
                 + " SYN/ACK packet",
             )
@@ -109,7 +111,7 @@ def tcp_handshake_checker(syn_packets, syn_ack_packets, ack_packets):
 
 
 while True:
-    packets = scp.sniff(count=1000)
+    packets = scp.sniff(count=100)
 
     tcp_packets = tcp_filter(packets)
 
