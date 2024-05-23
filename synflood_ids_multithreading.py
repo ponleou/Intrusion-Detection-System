@@ -37,56 +37,32 @@ def start_find_pkt_thread(packet):
     dst_ip = packet.getlayer(scp.IP).src
     src_ip = packet.getlayer(scp.IP).dst
     packet_seq = packet.getlayer(scp.TCP).seq
+    packet_flag = str(packet.getlayer(scp.TCP).flags)
 
     thread = threading.Thread(
         target=find_ack_pkt_thread,
-        args=(
-            packet_seq,
-            src_ip,
-            dst_ip,
-        ),
+        args=(packet_seq, src_ip, dst_ip, packet_flag),
     )
     thread.start()
 
 
 # function to find the correct acknowledgement number packet, will be ran in a seperate thread
-def find_ack_pkt_thread(seq_num, src_ip, dst_ip):
+def find_ack_pkt_thread(seq_num, src_ip, dst_ip, packet_flag):
 
     packets = scp.sniff(
         filter="tcp and src host " + src_ip + " and dst host " + dst_ip,
         prn=lambda x: check_ack_number(x, seq_num),
+        timeout=timeout,
     )
 
-    # TODO: function if the correct ack number is not found (missing packet)
-
-    # flag_name = None
-    # packets = None
-
-    # if flag == "SA":
-    #     flag_name = "SYN/ACK"
-    #     # sniff to find SYN/ACK
-    #     packets = scp.sniff(
-    #         filter="tcp and src host " + packet_dst + " and dst host " + packet_src,
-    #         prn=lambda x: start_find_pkt_thread(x, flag),
-    #         timeout=timeout,
-    #     )
-
-    # if flag == "A":
-    #     flag_name = "ACK"
-    #     # sniff to find ACK
-    #     packets = scp.sniff(
-    #         filter="tcp and src host " + packet_src + " and dst host " + packet_dst,
-    #         prn=logging_ack_found,
-    #         timeout=timeout,
-    #     )
-
-    # # checking to see if theres any missing flag packets after timeout
-    # check_missing_flag_packet(packets, flag, flag_name)
+    # TODO: function if the correct ack number is not found after timeout (missing packet)
+    packet_missing = check_missing_packet(packets, seq_num)
+    if packet_missing:
+        log_missing_packet(packet_flag, src_ip, dst_ip)
 
 
 #
 def check_ack_number(packet, seq_number):
-    # TODO: will probably need  a way to report the ack number not found
 
     correct_ack_number = seq_number + 1
     packet_ack_number = packet.getlayer(scp.TCP).ack
@@ -95,16 +71,63 @@ def check_ack_number(packet, seq_number):
         pkt_flag_processor(packet)
 
 
+# TEMPORARY: can remove after adding flag filters to sniff
+def check_missing_packet(sniffed_packets, seq_number):
+
+    correct_ack_number = seq_number + 1
+
+    # if there has been an ack packet for a syn packet, this loop will return false
+    # if the packet is missing, it will return true
+    for packet in sniffed_packets:
+
+        packet_ack_number = packet.getlayer(scp.TCP).ack
+
+        if packet_ack_number == correct_ack_number:
+            return False
+
+    return True
+    # for packet in packets:
+    #     if check_flag(packet, check_flag):
+    #         flag_packet_found = True
+
+    # if not flag_packet_found:
+    #     if verbose >= 1:
+    #         print(
+    #             datetime.now(), "No " + flag_name_output + " packet found after timeout"
+    #         )
+
+    #     # if the packet with the flag is not found, one is added to the number of missing packets
+    #     global missing_packets
+    #     missing_packets += 1
+
+
 def pkt_flag_processor(packet):
     if packet.getlayer(scp.TCP).flags == "SA":
         start_find_pkt_thread(packet)
 
     if packet.getlayer(scp.TCP).flags == "A":
-        logging_success_handshake(packet)
+        log_success_handshake(packet)
+
+
+# for logging missing packet, and adding to number of missing packet
+def log_missing_packet(packet_flag, src_ip, dst_ip):
+    if verbose >= 1:
+        print(
+            datetime.now(),
+            "No acknowledgement to"
+            + packet_flag
+            + " packet found after timeout between "
+            + src_ip
+            + " and "
+            + dst_ip,
+        )
+
+    global missing_packets
+    missing_packets += 1
 
 
 # for logging a successful tcp handshake
-def logging_success_handshake(packet):
+def log_success_handshake(packet):
     if verbose >= 2:
         print(
             datetime.now(),
@@ -113,23 +136,6 @@ def logging_success_handshake(packet):
             + " and "
             + packet.getlayer(scp.IP).dst,
         )
-
-
-# TEMPORARY: can remove after adding flag filters to sniff
-def check_missing_flag_packet(packets, check_flag, flag_name_output):
-    for packet in packets:
-        if check_flag(packet, check_flag):
-            flag_packet_found = True
-
-    if not flag_packet_found:
-        if verbose >= 1:
-            print(
-                datetime.now(), "No " + flag_name_output + " packet found after timeout"
-            )
-
-        # if the packet with the flag is not found, one is added to the number of missing packets
-        global missing_packets
-        missing_packets += 1
 
 
 # SYN flood checker
