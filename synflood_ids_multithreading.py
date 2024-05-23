@@ -8,98 +8,102 @@ import time
 time_check = (
     5  # seconds, time for each SYN flood check (lower time means less sensitive)
 )
-threshold = 100  # amount of failed packets in the period of time_check to alert detection of SYN flood (Higher means less sensitive)
-verbose = 0
+threshold = 100  # amount of missing packets in the period of time_check to alert detection of SYN flood (Higher means less sensitive)
+verbose = 1
 # 0 for SYN flood detection log only (no extra logging)
-# 1 for sucessful TCP handshake log
+# 1 for number of missing packets log
 # 2 for failed SYN/ACK and ACK packets
+# 3 for sucessful TCP handshake log
 
 
 timeout = 2  # seconds, change only if you know what you are doing
-failed_packets = 0
+missing_packets = 0
 
 
-# temporary (until we integrate check_flag in sniff())
-def check_flag(packet, flag):
-    # try and except because some tcp packets dont have flags
-    try:
-        if packet.getlayer(scp.TCP).flags == flag:
-            return packet
-    except:
-        pass
+# function to run find_pkt_thread function in another thread
+def start_find_pkt_thread(packet):
+    # dst_ip is put for src_ip, and src_ip is put for dst_ip
+    dst_ip = packet.getlayer(scp.IP).src
+    src_ip = packet.getlayer(scp.IP).dst
+    packet_seq = packet.getlayer(scp.TCP).seq
+    packet_flag = str(packet.getlayer(scp.TCP).flags)
 
-    return None
-
-
-def start_flag_thread(packet, flag):
-
-    # check for correct flag
-    if not check_flag(packet, flag):
-        return
-
-    next_flag = None
-
-    if flag == "S":
-        next_flag = "SA"
-
-    if flag == "SA":
-        next_flag = "A"
-
-    thread = threading.Thread(target=find_flag_thread, args=(packet, next_flag))
+    thread = threading.Thread(
+        target=find_ack_pkt_thread,
+        args=(packet_seq, src_ip, dst_ip, packet_flag),
+    )
     thread.start()
 
 
-def find_flag_thread(packet, flag):
-    packet_src = packet.getlayer(scp.IP).src
-    packet_dst = packet.getlayer(scp.IP).dst
+# function to find the correct acknowledgement number packet, will be ran in a seperate thread
+def find_ack_pkt_thread(seq_num, src_ip, dst_ip, packet_flag):
 
-    flag_name = None
-    packets = None
+    packets = scp.sniff(
+        filter="tcp and src host " + src_ip + " and dst host " + dst_ip,
+        prn=lambda x: check_ack_number(x, seq_num),
+        timeout=timeout,
+    )
 
-    if flag == "SA":
-        flag_name = "SYN/ACK"
-        # sniff to find SYN/ACK
-        packets = scp.sniff(
-            filter="tcp and src host " + packet_dst + " and dst host " + packet_src,
-            prn=lambda x: start_flag_thread(x, flag),
-            timeout=timeout,
+    # double checking and handling missing acknowledgement packet
+    packet_missing = check_missing_packet(packets, seq_num)
+    if packet_missing:
+        log_missing_packet(packet_flag, src_ip, dst_ip)
+
+
+#
+def check_ack_number(packet, seq_number):
+
+    correct_ack_number = seq_number + 1
+    packet_ack_number = packet.getlayer(scp.TCP).ack
+
+    if packet_ack_number == correct_ack_number:
+        pkt_flag_processor(packet)
+
+
+# TEMPORARY: can remove after adding flag filters to sniff
+def check_missing_packet(sniffed_packets, seq_number):
+
+    correct_ack_number = seq_number + 1
+
+    # if there has been an ack packet for a syn packet, this loop will return false
+    # if the packet is missing, it will return true
+    for packet in sniffed_packets:
+        packet_ack_number = packet.getlayer(scp.TCP).ack
+
+        if packet_ack_number == correct_ack_number:
+            return False
+
+    return True
+
+
+def pkt_flag_processor(packet):
+    if packet.getlayer(scp.TCP).flags == "SA":
+        start_find_pkt_thread(packet)
+
+    if packet.getlayer(scp.TCP).flags == "A":
+        log_success_handshake(packet)
+
+
+# for logging missing packet, and adding to number of missing packet
+def log_missing_packet(packet_flag, src_ip, dst_ip):
+    if verbose >= 2:
+        print(
+            datetime.now(),
+            "No acknowledgement to "
+            + packet_flag
+            + " packet found after timeout between "
+            + src_ip
+            + " and "
+            + dst_ip,
         )
 
-    if flag == "A":
-        flag_name = "ACK"
-        # sniff to find ACK
-        packets = scp.sniff(
-            filter="tcp and src host " + packet_src + " and dst host " + packet_dst,
-            prn=logging_ack_found,
-            timeout=timeout,
-        )
-
-    # TEMPORARY: can remove after adding flag filters to sniff
-    # checking to see if theres any flag packets after timeout
-    flag_packet_found = False
-
-    for packet in packets:
-        if check_flag(packet, flag):
-            flag_packet_found = True
-
-    if flag_packet_found:
-        return
-
-    if verbose >= 1:
-        print(datetime.now(), "No " + flag_name + " packet found after timeout")
-
-    global failed_packets
-    failed_packets += 1
-
-    # TODO: detect for a SYN attack if flag_packet_found is false
+    global missing_packets
+    missing_packets += 1
 
 
 # for logging a successful tcp handshake
-def logging_ack_found(packet):
-    if not check_flag(packet, "A"):
-        return
-
-    if verbose >= 2:
+def log_success_handshake(packet):
+    if verbose >= 3:
         print(
             datetime.now(),
             "Successful TCP handshake between "
@@ -109,23 +113,44 @@ def logging_ack_found(packet):
         )
 
 
-# SYN flood checker
-def check_failed_packets(time_check, threshold):
+# SYN flood detector logger
+def missing_packet_flood_detector(time_check, threshold):
     while True:
-        global failed_packets
+        global missing_packets
 
-        if failed_packets >= threshold:
-            print(datetime.now(), "WARNING: SYN flood detected")
-        failed_packets = 0
+        if verbose >= 1:
+            print(
+                datetime.now(),
+                missing_packets,
+                "missing acknowledgement packets within the last "
+                + str(time_check)
+                + " seconds",
+            )
+        if missing_packets >= threshold:
+            print(
+                datetime.now(),
+                "WARNING: SYN flood attack detected within the last "
+                + str(time_check)
+                + " seconds (missing packets exceed threshold)",
+            )
+        missing_packets = 0
         time.sleep(time_check)
 
 
 detector_thread = threading.Thread(
-    target=check_failed_packets, args=(time_check, threshold)
+    target=missing_packet_flood_detector, args=(time_check, threshold)
 )
 
 detector_thread.start()
 
 
 # checking for SYN packets
-scp.sniff(prn=lambda x: start_flag_thread(x, "S"), filter="tcp")
+def first_filter_syn_flag(packet):
+    if packet.getlayer(scp.TCP).flags == "S":
+        start_find_pkt_thread(packet)
+
+
+scp.sniff(
+    prn=lambda x: first_filter_syn_flag(x),
+    filter="tcp",
+)
