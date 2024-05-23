@@ -114,7 +114,7 @@ def log_success_handshake(packet):
 
 
 # SYN flood detector logger
-def check_failed_packets(time_check, threshold):
+def missing_packet_flood_detector(time_check, threshold):
     while True:
         global missing_packets
 
@@ -138,7 +138,7 @@ def check_failed_packets(time_check, threshold):
 
 
 detector_thread = threading.Thread(
-    target=check_failed_packets, args=(time_check, threshold)
+    target=missing_packet_flood_detector, args=(time_check, threshold)
 )
 
 detector_thread.start()
