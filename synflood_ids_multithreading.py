@@ -19,18 +19,6 @@ timeout = 2  # seconds, change only if you know what you are doing
 missing_packets = 0
 
 
-# temporary (until we integrate check_flag in sniff())
-def check_flag(packet, flag):
-    # try and except because some tcp packets dont have flags
-    try:
-        if packet.getlayer(scp.TCP).flags == flag:
-            return packet
-    except:
-        pass
-
-    return None
-
-
 # function to run find_pkt_thread function in another thread
 def start_find_pkt_thread(packet):
     # dst_ip is put for src_ip, and src_ip is put for dst_ip
@@ -80,25 +68,19 @@ def check_missing_packet(sniffed_packets, seq_number):
     # if the packet is missing, it will return true
     for packet in sniffed_packets:
 
+        # only checking for acknowledgement to SYN and SYN/ACK packets
+        if (
+            not packet.getlayer(scp.TCP).flags == "S"
+            or not packet.getlayer(scp.TCP).flags == "SA"
+        ):
+            continue
+
         packet_ack_number = packet.getlayer(scp.TCP).ack
 
         if packet_ack_number == correct_ack_number:
             return False
 
     return True
-    # for packet in packets:
-    #     if check_flag(packet, check_flag):
-    #         flag_packet_found = True
-
-    # if not flag_packet_found:
-    #     if verbose >= 1:
-    #         print(
-    #             datetime.now(), "No " + flag_name_output + " packet found after timeout"
-    #         )
-
-    #     # if the packet with the flag is not found, one is added to the number of missing packets
-    #     global missing_packets
-    #     missing_packets += 1
 
 
 def pkt_flag_processor(packet):
@@ -114,7 +96,7 @@ def log_missing_packet(packet_flag, src_ip, dst_ip):
     if verbose >= 1:
         print(
             datetime.now(),
-            "No acknowledgement to"
+            "No acknowledgement to "
             + packet_flag
             + " packet found after timeout between "
             + src_ip
@@ -157,7 +139,12 @@ detector_thread.start()
 
 
 # checking for SYN packets
+def first_filter_syn_flag(packet):
+    if packet.getlayer(scp.TCP).flags == "S":
+        start_find_pkt_thread(packet)
+
+
 scp.sniff(
-    prn=lambda x: start_find_pkt_thread(x),
+    prn=lambda x: first_filter_syn_flag(x),
     filter="tcp",
 )
