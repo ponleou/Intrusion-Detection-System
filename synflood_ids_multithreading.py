@@ -9,10 +9,11 @@ time_check = (
     5  # seconds, time for each SYN flood check (lower time means less sensitive)
 )
 threshold = 100  # amount of missing packets in the period of time_check to alert detection of SYN flood (Higher means less sensitive)
-verbose = 2
+verbose = 1
 # 0 for SYN flood detection log only (no extra logging)
-# 1 for sucessful TCP handshake log
+# 1 for number of missing packets log
 # 2 for failed SYN/ACK and ACK packets
+# 3 for sucessful TCP handshake log
 
 
 timeout = 2  # seconds, change only if you know what you are doing
@@ -43,7 +44,7 @@ def find_ack_pkt_thread(seq_num, src_ip, dst_ip, packet_flag):
         timeout=timeout,
     )
 
-    # TODO: function if the correct ack number is not found after timeout (missing packet)
+    # double checking and handling missing acknowledgement packet
     packet_missing = check_missing_packet(packets, seq_num)
     if packet_missing:
         log_missing_packet(packet_flag, src_ip, dst_ip)
@@ -67,14 +68,6 @@ def check_missing_packet(sniffed_packets, seq_number):
     # if there has been an ack packet for a syn packet, this loop will return false
     # if the packet is missing, it will return true
     for packet in sniffed_packets:
-
-        # only checking for acknowledgement to SYN and SYN/ACK packets
-        if (
-            not packet.getlayer(scp.TCP).flags == "S"
-            or not packet.getlayer(scp.TCP).flags == "SA"
-        ):
-            continue
-
         packet_ack_number = packet.getlayer(scp.TCP).ack
 
         if packet_ack_number == correct_ack_number:
@@ -93,7 +86,7 @@ def pkt_flag_processor(packet):
 
 # for logging missing packet, and adding to number of missing packet
 def log_missing_packet(packet_flag, src_ip, dst_ip):
-    if verbose >= 1:
+    if verbose >= 2:
         print(
             datetime.now(),
             "No acknowledgement to "
@@ -110,7 +103,7 @@ def log_missing_packet(packet_flag, src_ip, dst_ip):
 
 # for logging a successful tcp handshake
 def log_success_handshake(packet):
-    if verbose >= 2:
+    if verbose >= 3:
         print(
             datetime.now(),
             "Successful TCP handshake between "
@@ -120,13 +113,26 @@ def log_success_handshake(packet):
         )
 
 
-# SYN flood checker
+# SYN flood detector logger
 def check_failed_packets(time_check, threshold):
     while True:
         global missing_packets
 
+        if verbose >= 1:
+            print(
+                datetime.now(),
+                missing_packets,
+                "missing acknowledgement packets within the last "
+                + str(time_check)
+                + " seconds",
+            )
         if missing_packets >= threshold:
-            print(datetime.now(), "WARNING: SYN flood detected")
+            print(
+                datetime.now(),
+                "WARNING: SYN flood attack detected within the last "
+                + str(time_check)
+                + " seconds (missing packets exceed threshold)",
+            )
         missing_packets = 0
         time.sleep(time_check)
 
