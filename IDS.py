@@ -9,15 +9,11 @@ syn_time_check = (
     2  # seconds, time for each SYN flood check (lower time means less sensitive)
 )
 syn_threshold = 100  # amount of missing packets in the period of time_check to alert detection of SYN flood (Higher means less sensitive)
-verbose = 1
-# 0 for SYN flood detection log only (no extra logging)
-# 1 for number of missing packets log
-# 2 for failed SYN/ACK and ACK packets
-# 3 for sucessful TCP handshake log
+verbose = 1  # 0 to 3 (-1 for no logs)
 
 
 timeout = 2  # seconds, change only if you know what you are doing
-missing_packets = 0
+interaction_missing_packets = {}
 
 
 # SYN FLOOD DETECTOR
@@ -25,16 +21,13 @@ missing_packets = 0
 def syn_detector_threader(packet):
 
     try:
-        if packet.getlayer(scp.TCP).flags == "S":
-            pass
-        else:
+        if not packet.getlayer(scp.TCP).flags == "S":
             return
     except:
         return
 
-    # dst_ip is put for src_ip, and src_ip is put for dst_ip
-    dst_ip = packet.getlayer(scp.IP).src
-    src_ip = packet.getlayer(scp.IP).dst
+    src_ip = packet.src
+    dst_ip = packet.dst
     packet_seq = packet.getlayer(scp.TCP).seq
     packet_flag = str(packet.getlayer(scp.TCP).flags)
 
@@ -49,10 +42,10 @@ def syn_detector_threader(packet):
 def find_ack_pkt_thread(seq_num, src_ip, dst_ip, packet_flag):
 
     packets = scp.sniff(
-        filter="tcp and src host " + src_ip + " and dst host " + dst_ip,
+        filter="tcp and src host " + dst_ip + " and dst host " + src_ip,
         prn=lambda x: check_ack_number(x, seq_num),
         timeout=timeout,
-    )
+    )  # dst_ip is put for src_ip, and src_ip is put for dst_ip
 
     # double checking and handling missing acknowledgement packet
     packet_missing = check_missing_packet(packets, seq_num)
@@ -113,8 +106,12 @@ def log_missing_packet(packet_flag, src_ip, dst_ip):
             + dst_ip,
         )
 
-    global missing_packets
-    missing_packets += 1
+    interaction_name = src_ip + " and " + dst_ip
+
+    if interaction_name not in interaction_missing_packets:
+        interaction_missing_packets[interaction_name] = 0
+
+    interaction_missing_packets[interaction_name] += 1
 
 
 # for logging a successful tcp handshake
@@ -122,20 +119,27 @@ def log_success_handshake(packet):
     if verbose >= 3:
         print(
             datetime.now(),
-            "Successful TCP handshake between "
-            + packet.getlayer(scp.IP).src
-            + " and "
-            + packet.getlayer(scp.IP).dst,
+            "Successful TCP handshake between " + packet.src + " and " + packet.dst,
         )
+
+
+def reset_interaction_missing_packets():
+    global interaction_missing_packets
+    interaction_missing_packets = {}
 
 
 # SYN flood detector logger
 def missing_packet_flood_detector(time_check, threshold):
+
     while True:
         time.sleep(time_check)
-        global missing_packets
 
         if verbose >= 1:
+            missing_packets = 0
+
+            for interaction in interaction_missing_packets:
+                missing_packets += interaction_missing_packets[interaction]
+
             print(
                 datetime.now(),
                 missing_packets,
@@ -143,15 +147,21 @@ def missing_packet_flood_detector(time_check, threshold):
                 + str(time_check)
                 + " seconds",
             )
+
         if verbose >= 0:
-            if missing_packets >= threshold:
-                print(
-                    datetime.now(),
-                    "WARNING: SYN flood attack detected within the last "
-                    + str(time_check)
-                    + " seconds (missing packets exceed threshold)",
-                )
-        missing_packets = 0
+            for interaction in interaction_missing_packets:
+                if interaction_missing_packets[interaction] >= threshold:
+                    ip = interaction.split(" and ")
+
+                    print(
+                        datetime.now(),
+                        "WARNING: SYN flood attack detected by "
+                        + ip[0]
+                        + " targeting "
+                        + ip[1],
+                    )
+
+        reset_interaction_missing_packets()
 
 
 synflood_detector_thread = threading.Thread(
@@ -167,8 +177,6 @@ def reset_unique_port():
     global unique_interaction_accessing_port
     unique_interaction_accessing_port = {}
 
-
-reset_unique_port()
 
 # PORTSCAN DETECTOR
 ps_timeout = 30
