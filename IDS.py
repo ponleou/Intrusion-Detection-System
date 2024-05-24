@@ -159,11 +159,20 @@ synflood_detector_thread = threading.Thread(
 )
 
 
-# PORTSCAN DETECTOR
-ps_threshold = 100
+# dictionary for holding unique devices and the ports they are accessing (used for port scan)
+unique_interaction_accessing_port = {}
 
-# dictionary for holding unique dport and amount, resets every timeout by port_scan_detector
-unique_port = {}
+
+def reset_unique_port():
+    global unique_interaction_accessing_port
+    unique_interaction_accessing_port = {}
+
+
+reset_unique_port()
+
+# PORTSCAN DETECTOR
+ps_timeout = 30
+ps_threshold = 100
 
 
 def unique_port_organizer(packet):
@@ -173,22 +182,23 @@ def unique_port_organizer(packet):
     except:
         return
 
-    if packet.dport not in unique_port:
-        unique_port[packet.dport] = 1
-        return
+    interaction_name = packet.src + " and " + packet.dst
 
-    unique_port[packet.dport] += 1
+    if interaction_name not in unique_interaction_accessing_port:
+        unique_interaction_accessing_port[interaction_name] = []
+
+    if packet.dport not in unique_interaction_accessing_port[interaction_name]:
+        unique_interaction_accessing_port[interaction_name].append(packet.dport)
 
 
 def port_scan_detector():
     while True:
-        time.sleep(timeout)
-        global unique_port
+        time.sleep(ps_timeout)
+        for interaction in unique_interaction_accessing_port:
+            if len(interaction) >= ps_threshold:
+                print(datetime.now(), "WARNING: Portscan detected")
 
-        if len(unique_port) >= ps_threshold:
-            print(datetime.now(), "WARNING: Portscan detected")
-
-        unique_port = {}
+            reset_unique_port()
 
 
 port_scan_detector_thread = threading.Thread(target=port_scan_detector)
