@@ -5,18 +5,20 @@ import time
 
 
 # Users can adjust these values
-syn_time_check = (
-    2  # seconds, time for each SYN flood check (lower time means less sensitive)
-)
-syn_threshold = 100  # amount of missing packets in the period of time_check to alert detection of SYN flood (Higher means less sensitive)
+syn_time_check = 2  # seconds for each SYN flood check (lower time means less sensitive)
+syn_threshold = 100  # minimum amount of missing packets in the period of time_check to alert detection of SYN flood (Higher means less sensitive)
+ps_threshold = 40  # minimum amount of unique accessed ports to alert port scan (higher means less sentitive)
 verbose = 2  # 0 to 3 (-1 for no logs)
 
 
-timeout = 2  # seconds, change only if you know what you are doing
-interaction_missing_packets = {}
+ps_time_check = 30  # seconds, change only if you know what you are doing
+syn_timeout = 2  # seconds, change only if you know what you are doing
 
 
 # SYN FLOOD DETECTOR
+interaction_missing_packets = {}
+
+
 # function to run find_pkt_thread function in another thread
 def syn_detector_threader(packet):
 
@@ -46,7 +48,7 @@ def find_ack_pkt_thread(seq_num, src_ip, dst_ip, src_mac_ad, dst_mac_ad, packet_
     packets = scp.sniff(
         filter="tcp and src host " + dst_ip + " and dst host " + src_ip,
         prn=lambda x: check_ack_number(x, seq_num),
-        timeout=timeout,
+        timeout=syn_timeout,
     )  # dst_ip is put for src_ip, and src_ip is put for dst_ip
 
     # double checking and handling missing acknowledgement packet
@@ -181,8 +183,6 @@ def reset_unique_port():
 
 
 # PORTSCAN DETECTOR
-ps_timeout = 30
-ps_threshold = 40
 
 
 def unique_port_organizer(packet):
@@ -204,7 +204,7 @@ def unique_port_organizer(packet):
 
 def port_scan_detector():
     while True:
-        time.sleep(ps_timeout)
+        time.sleep(ps_time_check)
 
         for interaction_name in unique_interaction_accessing_port:
 
