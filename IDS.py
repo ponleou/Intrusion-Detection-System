@@ -16,13 +16,22 @@ syn_verbose = -1
 # 3 for sucessful TCP handshake log
 
 
-syn_timeout = 2  # seconds, change only if you know what you are doing
+timeout = 2  # seconds, change only if you know what you are doing
 missing_packets = 0
 
 
 # SYN FLOOD DETECTOR
 # function to run find_pkt_thread function in another thread
 def syn_detector_threader(packet):
+
+    try:
+        if packet.getlayer(scp.TCP).flags == "S":
+            pass
+        else:
+            return
+    except:
+        return
+
     # dst_ip is put for src_ip, and src_ip is put for dst_ip
     dst_ip = packet.getlayer(scp.IP).src
     src_ip = packet.getlayer(scp.IP).dst
@@ -42,7 +51,7 @@ def find_ack_pkt_thread(seq_num, src_ip, dst_ip, packet_flag):
     packets = scp.sniff(
         filter="tcp and src host " + src_ip + " and dst host " + dst_ip,
         prn=lambda x: check_ack_number(x, seq_num),
-        timeout=syn_timeout,
+        timeout=timeout,
     )
 
     # double checking and handling missing acknowledgement packet
@@ -149,25 +158,21 @@ synflood_detector_thread = threading.Thread(
     target=missing_packet_flood_detector, args=(syn_time_check, syn_threshold)
 )
 
-synflood_detector_thread.start()
-
 
 # PORTSCAN DETECTOR
-ps_timeout = 2
 ps_threshold = 100
 
-# dictionary for holding unique dport and amount
+# dictionary for holding unique dport and amount, resets every timeout by port_scan_detector
 unique_port = {}
 
 
-def port_scan_starter(packet):
+def unique_port_organizer(packet):
 
     try:
         packet.dport
     except:
         return
 
-    print(packet.dport)
     if packet.dport not in unique_port:
         unique_port[packet.dport] = 1
         return
@@ -177,28 +182,26 @@ def port_scan_starter(packet):
 
 def port_scan_detector():
     while True:
-        time.sleep(ps_timeout)
-        print(unique_port)
+        time.sleep(timeout)
+        global unique_port
+
         if len(unique_port) >= ps_threshold:
             print(datetime.now(), "WARNING: Portscan detected")
 
+        unique_port = {}
 
-port_scan_detector()
+
+port_scan_detector_thread = threading.Thread(target=port_scan_detector)
 
 
 # sending pckets to the correct detector
 def processor(packet):
-
     # passing to syn flood detector
-    try:
-        if packet.getlayer(scp.TCP).flags == "S":
-            syn_detector_threader(packet)
-    except:
-        pass
-
-    print("test")
-    # passing to port scan detector
-    port_scan_starter(packet)
+    syn_detector_threader(packet)
+    # sorts and count unique ports (used for port scanning)
+    unique_port_organizer(packet)
 
 
-scp.sniff(prn=lambda x: processor(x))
+synflood_detector_thread.start()
+port_scan_detector_thread.start()
+scp.sniff(prn=processor)
