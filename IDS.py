@@ -8,7 +8,7 @@ import time
 syn_time_check = 2  # seconds for each SYN flood check (lower time means less sensitive)
 syn_threshold = 100  # minimum amount of missing packets in the period of time_check to alert detection of SYN flood (Higher means less sensitive)
 ps_threshold = 40  # minimum amount of unique accessed ports to alert port scan (higher means less sentitive)
-verbose = 1  # 0 to 3 (-1 for no logs)
+verbose = 3  # 0 to 3 (-1 for no logs)
 
 
 ps_time_check = 30  # seconds, change only if you know what you are doing
@@ -20,7 +20,7 @@ interaction_missing_packets = {}
 
 
 def logging(msg, file_name="ids_logs.txt"):
-    with open(file_name, "w") as f:
+    with open(file_name, "a") as f:
         f.write(msg + "\n")
 
 
@@ -126,7 +126,7 @@ def log_missing_packet(packet_flag, src_ip, dst_ip):
 
 # for logging a successful tcp handshake
 def log_success_handshake(packet):
-    if verbose >= 2:
+    if verbose >= 1:
         logging(
             str(datetime.now())
             + ": "
@@ -148,7 +148,7 @@ def missing_packet_flood_detector(time_check, threshold):
     while True:
         time.sleep(time_check)
 
-        if verbose >= 1:
+        if verbose >= 2:
             missing_packets = 0
 
             for interaction in interaction_missing_packets:
@@ -158,7 +158,7 @@ def missing_packet_flood_detector(time_check, threshold):
                 str(datetime.now())
                 + ": "
                 + str(missing_packets)
-                + "missing acknowledgement packets within the last "
+                + " missing acknowledgement packets within the last "
                 + str(time_check)
                 + " seconds",
             )
