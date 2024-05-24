@@ -9,7 +9,7 @@ syn_time_check = (
     2  # seconds, time for each SYN flood check (lower time means less sensitive)
 )
 syn_threshold = 100  # amount of missing packets in the period of time_check to alert detection of SYN flood (Higher means less sensitive)
-verbose = 1  # 0 to 3 (-1 for no logs)
+verbose = 2  # 0 to 3 (-1 for no logs)
 
 
 timeout = 2  # seconds, change only if you know what you are doing
@@ -26,20 +26,22 @@ def syn_detector_threader(packet):
     except:
         return
 
-    src_ip = packet.src
-    dst_ip = packet.dst
+    src_ip = packet.getlayer(scp.IP).src
+    dst_ip = packet.getlayer(scp.IP).dst
     packet_seq = packet.getlayer(scp.TCP).seq
     packet_flag = str(packet.getlayer(scp.TCP).flags)
+    src_mac_ad = packet.src
+    dst_mac_ad = packet.dst
 
     thread = threading.Thread(
         target=find_ack_pkt_thread,
-        args=(packet_seq, src_ip, dst_ip, packet_flag),
+        args=(packet_seq, src_ip, dst_ip, src_mac_ad, dst_mac_ad, packet_flag),
     )
     thread.start()
 
 
 # function to find the correct acknowledgement number packet, will be ran in a seperate thread
-def find_ack_pkt_thread(seq_num, src_ip, dst_ip, packet_flag):
+def find_ack_pkt_thread(seq_num, src_ip, dst_ip, src_mac_ad, dst_mac_ad, packet_flag):
 
     packets = scp.sniff(
         filter="tcp and src host " + dst_ip + " and dst host " + src_ip,
@@ -50,7 +52,7 @@ def find_ack_pkt_thread(seq_num, src_ip, dst_ip, packet_flag):
     # double checking and handling missing acknowledgement packet
     packet_missing = check_missing_packet(packets, seq_num)
     if packet_missing:
-        log_missing_packet(packet_flag, src_ip, dst_ip)
+        log_missing_packet(packet_flag, src_mac_ad, dst_mac_ad)
 
 
 # checking if that packet is the acknowledgement to the syn packet
@@ -95,7 +97,7 @@ def pkt_flag_processor(packet):
 
 # for logging missing packet, and adding to number of missing packet
 def log_missing_packet(packet_flag, src_ip, dst_ip):
-    if verbose >= 2:
+    if verbose >= 3:
         print(
             datetime.now(),
             "No acknowledgement to "
@@ -116,7 +118,7 @@ def log_missing_packet(packet_flag, src_ip, dst_ip):
 
 # for logging a successful tcp handshake
 def log_success_handshake(packet):
-    if verbose >= 3:
+    if verbose >= 2:
         print(
             datetime.now(),
             "Successful TCP handshake between " + packet.src + " and " + packet.dst,
@@ -209,12 +211,13 @@ def port_scan_detector():
             ip = interaction_name.split(" and ")
             if verbose >= 1:
                 print(
+                    datetime.now(),
                     ip[0]
                     + " accessed "
                     + str(len(unique_interaction_accessing_port[interaction_name]))
                     + " ports of "
                     + ip[1]
-                    + "'s connection"
+                    + "'s connection",
                 )
 
             if len(unique_interaction_accessing_port[interaction_name]) >= ps_threshold:
