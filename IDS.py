@@ -8,7 +8,7 @@ import time
 syn_time_check = 2  # seconds for each SYN flood check (lower time means less sensitive)
 syn_threshold = 100  # minimum amount of missing packets in the period of time_check to alert detection of SYN flood (Higher means less sensitive)
 ps_threshold = 40  # minimum amount of unique accessed ports to alert port scan (higher means less sentitive)
-verbose = 2  # 0 to 3 (-1 for no logs)
+verbose = 1  # 0 to 3 (-1 for no logs)
 
 
 ps_time_check = 30  # seconds, change only if you know what you are doing
@@ -106,15 +106,14 @@ def pkt_flag_processor(packet):
 def log_missing_packet(packet_flag, src_ip, dst_ip):
     if verbose >= 3:
         logging(
-            str(
-                datetime.now(),
-                "No acknowledgement to "
-                + packet_flag
-                + " packet found after timeout between "
-                + src_ip
-                + " and "
-                + dst_ip,
-            )
+            str(datetime.now())
+            + ": "
+            + "No acknowledgement to "
+            + packet_flag
+            + " packet found after timeout between "
+            + src_ip
+            + " and "
+            + dst_ip,
         )
 
     interaction_name = src_ip + " and " + dst_ip
@@ -129,10 +128,12 @@ def log_missing_packet(packet_flag, src_ip, dst_ip):
 def log_success_handshake(packet):
     if verbose >= 2:
         logging(
-            str(
-                datetime.now(),
-                "Successful TCP handshake between " + packet.src + " and " + packet.dst,
-            )
+            str(datetime.now())
+            + ": "
+            + "Successful TCP handshake between "
+            + packet.src
+            + " and "
+            + packet.dst,
         )
 
 
@@ -154,13 +155,12 @@ def missing_packet_flood_detector(time_check, threshold):
                 missing_packets += interaction_missing_packets[interaction]
 
             logging(
-                str(
-                    datetime.now(),
-                    missing_packets,
-                    "missing acknowledgement packets within the last "
-                    + str(time_check)
-                    + " seconds",
-                )
+                str(datetime.now())
+                + ": "
+                + str(missing_packets)
+                + "missing acknowledgement packets within the last "
+                + str(time_check)
+                + " seconds",
             )
 
         if verbose >= 0:
@@ -169,13 +169,12 @@ def missing_packet_flood_detector(time_check, threshold):
                     ip = interaction.split(" and ")
 
                     logging(
-                        str(
-                            datetime.now(),
-                            "WARNING: SYN flood attack detected by "
-                            + ip[0]
-                            + " targeting "
-                            + ip[1],
-                        )
+                        str(datetime.now())
+                        + ": "
+                        + "WARNING: SYN flood attack detected by "
+                        + ip[0]
+                        + " targeting "
+                        + ip[1],
                     )
 
         reset_interaction_missing_packets()
@@ -224,28 +223,26 @@ def port_scan_detector():
             ip = interaction_name.split(" and ")
             if verbose >= 1:
                 logging(
-                    str(
-                        datetime.now(),
-                        ip[0]
-                        + " accessed "
-                        + str(len(unique_interaction_accessing_port[interaction_name]))
-                        + " ports of "
-                        + ip[1]
-                        + "'s connection",
-                    )
+                    str(datetime.now())
+                    + ": "
+                    + ip[0]
+                    + " accessed "
+                    + str(len(unique_interaction_accessing_port[interaction_name]))
+                    + " ports of "
+                    + ip[1]
+                    + "'s connection",
                 )
 
             if len(unique_interaction_accessing_port[interaction_name]) >= ps_threshold:
 
                 if verbose >= 0:
                     logging(
-                        str(
-                            datetime.now(),
-                            "WARNING: Portscan detected by "
-                            + ip[0]
-                            + " targeting "
-                            + ip[1],
-                        )
+                        str(datetime.now())
+                        + ": "
+                        + "WARNING: Portscan detected by "
+                        + ip[0]
+                        + " targeting "
+                        + ip[1],
                     )
 
         reset_unique_port()
