@@ -9,7 +9,7 @@ syn_time_check = (
     2  # seconds, time for each SYN flood check (lower time means less sensitive)
 )
 syn_threshold = 100  # amount of missing packets in the period of time_check to alert detection of SYN flood (Higher means less sensitive)
-syn_verbose = -1
+verbose = 1
 # 0 for SYN flood detection log only (no extra logging)
 # 1 for number of missing packets log
 # 2 for failed SYN/ACK and ACK packets
@@ -102,7 +102,7 @@ def pkt_flag_processor(packet):
 
 # for logging missing packet, and adding to number of missing packet
 def log_missing_packet(packet_flag, src_ip, dst_ip):
-    if syn_verbose >= 2:
+    if verbose >= 2:
         print(
             datetime.now(),
             "No acknowledgement to "
@@ -119,7 +119,7 @@ def log_missing_packet(packet_flag, src_ip, dst_ip):
 
 # for logging a successful tcp handshake
 def log_success_handshake(packet):
-    if syn_verbose >= 3:
+    if verbose >= 3:
         print(
             datetime.now(),
             "Successful TCP handshake between "
@@ -135,7 +135,7 @@ def missing_packet_flood_detector(time_check, threshold):
         time.sleep(time_check)
         global missing_packets
 
-        if syn_verbose >= 1:
+        if verbose >= 1:
             print(
                 datetime.now(),
                 missing_packets,
@@ -143,7 +143,7 @@ def missing_packet_flood_detector(time_check, threshold):
                 + str(time_check)
                 + " seconds",
             )
-        if syn_verbose >= 0:
+        if verbose >= 0:
             if missing_packets >= threshold:
                 print(
                     datetime.now(),
@@ -172,13 +172,14 @@ reset_unique_port()
 
 # PORTSCAN DETECTOR
 ps_timeout = 30
-ps_threshold = 100
+ps_threshold = 40
 
 
 def unique_port_organizer(packet):
 
     try:
-        packet.dport
+        if not packet.getlayer(scp.TCP).flags == "S":
+            return
     except:
         return
 
@@ -197,12 +198,27 @@ def port_scan_detector():
 
         for interaction_name in unique_interaction_accessing_port:
 
-            if len(unique_interaction_accessing_port[interaction_name]) >= ps_threshold:
-                ip = interaction_name.split(" and ")
+            ip = interaction_name.split(" and ")
+            if verbose >= 1:
                 print(
-                    datetime.now(),
-                    "WARNING: Portscan detected by " + ip[0] + " targetted on " + ip[1],
+                    ip[0]
+                    + " accessed "
+                    + str(len(unique_interaction_accessing_port[interaction_name]))
+                    + " ports of "
+                    + ip[1]
+                    + "'s connection"
                 )
+
+            if len(unique_interaction_accessing_port[interaction_name]) >= ps_threshold:
+
+                if verbose >= 0:
+                    print(
+                        datetime.now(),
+                        "WARNING: Portscan detected by "
+                        + ip[0]
+                        + " targeting "
+                        + ip[1],
+                    )
 
         reset_unique_port()
 
