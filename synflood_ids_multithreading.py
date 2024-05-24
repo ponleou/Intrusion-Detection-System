@@ -54,10 +54,13 @@ def find_ack_pkt_thread(seq_num, src_ip, dst_ip, packet_flag):
 def check_ack_number(packet, seq_number):
 
     correct_ack_number = seq_number + 1
-    packet_ack_number = packet.getlayer(scp.TCP).ack
+    try:
+        packet_ack_number = packet.getlayer(scp.TCP).ack
 
-    if packet_ack_number == correct_ack_number:
-        pkt_flag_processor(packet)
+        if packet_ack_number == correct_ack_number:
+            pkt_flag_processor(packet)
+    except:
+        pass
 
 
 # TEMPORARY: can remove after adding flag filters to sniff
@@ -68,10 +71,13 @@ def check_missing_packet(sniffed_packets, seq_number):
     # if there has been an ack packet for a syn packet, this loop will return false
     # if the packet is missing, it will return true
     for packet in sniffed_packets:
-        packet_ack_number = packet.getlayer(scp.TCP).ack
+        try:
+            packet_ack_number = packet.getlayer(scp.TCP).ack
 
-        if packet_ack_number == correct_ack_number:
-            return False
+            if packet_ack_number == correct_ack_number:
+                return False
+        except:
+            pass
 
     return True
 
@@ -116,6 +122,7 @@ def log_success_handshake(packet):
 # SYN flood detector logger
 def missing_packet_flood_detector(time_check, threshold):
     while True:
+        time.sleep(time_check)
         global missing_packets
 
         if verbose >= 1:
@@ -134,7 +141,6 @@ def missing_packet_flood_detector(time_check, threshold):
                 + " seconds (missing packets exceed threshold)",
             )
         missing_packets = 0
-        time.sleep(time_check)
 
 
 detector_thread = threading.Thread(
