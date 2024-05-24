@@ -5,23 +5,24 @@ import time
 
 
 # Users can adjust these values
-time_check = (
-    5  # seconds, time for each SYN flood check (lower time means less sensitive)
+syn_time_check = (
+    2  # seconds, time for each SYN flood check (lower time means less sensitive)
 )
-threshold = 100  # amount of missing packets in the period of time_check to alert detection of SYN flood (Higher means less sensitive)
-verbose = 1
+syn_threshold = 100  # amount of missing packets in the period of time_check to alert detection of SYN flood (Higher means less sensitive)
+syn_verbose = -1
 # 0 for SYN flood detection log only (no extra logging)
 # 1 for number of missing packets log
 # 2 for failed SYN/ACK and ACK packets
 # 3 for sucessful TCP handshake log
 
 
-timeout = 2  # seconds, change only if you know what you are doing
+syn_timeout = 2  # seconds, change only if you know what you are doing
 missing_packets = 0
 
 
+# SYN FLOOD DETECTOR
 # function to run find_pkt_thread function in another thread
-def start_find_pkt_thread(packet):
+def syn_detector_threader(packet):
     # dst_ip is put for src_ip, and src_ip is put for dst_ip
     dst_ip = packet.getlayer(scp.IP).src
     src_ip = packet.getlayer(scp.IP).dst
@@ -41,7 +42,7 @@ def find_ack_pkt_thread(seq_num, src_ip, dst_ip, packet_flag):
     packets = scp.sniff(
         filter="tcp and src host " + src_ip + " and dst host " + dst_ip,
         prn=lambda x: check_ack_number(x, seq_num),
-        timeout=timeout,
+        timeout=syn_timeout,
     )
 
     # double checking and handling missing acknowledgement packet
@@ -50,7 +51,7 @@ def find_ack_pkt_thread(seq_num, src_ip, dst_ip, packet_flag):
         log_missing_packet(packet_flag, src_ip, dst_ip)
 
 
-#
+# checking if that packet is the acknowledgement to the syn packet
 def check_ack_number(packet, seq_number):
 
     correct_ack_number = seq_number + 1
@@ -84,7 +85,7 @@ def check_missing_packet(sniffed_packets, seq_number):
 
 def pkt_flag_processor(packet):
     if packet.getlayer(scp.TCP).flags == "SA":
-        start_find_pkt_thread(packet)
+        syn_detector_threader(packet)
 
     if packet.getlayer(scp.TCP).flags == "A":
         log_success_handshake(packet)
@@ -92,7 +93,7 @@ def pkt_flag_processor(packet):
 
 # for logging missing packet, and adding to number of missing packet
 def log_missing_packet(packet_flag, src_ip, dst_ip):
-    if verbose >= 2:
+    if syn_verbose >= 2:
         print(
             datetime.now(),
             "No acknowledgement to "
@@ -109,7 +110,7 @@ def log_missing_packet(packet_flag, src_ip, dst_ip):
 
 # for logging a successful tcp handshake
 def log_success_handshake(packet):
-    if verbose >= 3:
+    if syn_verbose >= 3:
         print(
             datetime.now(),
             "Successful TCP handshake between "
@@ -125,7 +126,7 @@ def missing_packet_flood_detector(time_check, threshold):
         time.sleep(time_check)
         global missing_packets
 
-        if verbose >= 1:
+        if syn_verbose >= 1:
             print(
                 datetime.now(),
                 missing_packets,
@@ -133,30 +134,71 @@ def missing_packet_flood_detector(time_check, threshold):
                 + str(time_check)
                 + " seconds",
             )
-        if missing_packets >= threshold:
-            print(
-                datetime.now(),
-                "WARNING: SYN flood attack detected within the last "
-                + str(time_check)
-                + " seconds (missing packets exceed threshold)",
-            )
+        if syn_verbose >= 0:
+            if missing_packets >= threshold:
+                print(
+                    datetime.now(),
+                    "WARNING: SYN flood attack detected within the last "
+                    + str(time_check)
+                    + " seconds (missing packets exceed threshold)",
+                )
         missing_packets = 0
 
 
-detector_thread = threading.Thread(
-    target=missing_packet_flood_detector, args=(time_check, threshold)
+synflood_detector_thread = threading.Thread(
+    target=missing_packet_flood_detector, args=(syn_time_check, syn_threshold)
 )
 
-detector_thread.start()
+synflood_detector_thread.start()
 
 
-# checking for SYN packets
-def first_filter_syn_flag(packet):
-    if packet.getlayer(scp.TCP).flags == "S":
-        start_find_pkt_thread(packet)
+# PORTSCAN DETECTOR
+ps_timeout = 2
+ps_threshold = 100
+
+# dictionary for holding unique dport and amount
+unique_port = {}
 
 
-scp.sniff(
-    prn=lambda x: first_filter_syn_flag(x),
-    filter="tcp",
-)
+def port_scan_starter(packet):
+
+    try:
+        packet.dport
+    except:
+        return
+
+    print(packet.dport)
+    if packet.dport not in unique_port:
+        unique_port[packet.dport] = 1
+        return
+
+    unique_port[packet.dport] += 1
+
+
+def port_scan_detector():
+    while True:
+        time.sleep(ps_timeout)
+        print(unique_port)
+        if len(unique_port) >= ps_threshold:
+            print(datetime.now(), "WARNING: Portscan detected")
+
+
+port_scan_detector()
+
+
+# sending pckets to the correct detector
+def processor(packet):
+
+    # passing to syn flood detector
+    try:
+        if packet.getlayer(scp.TCP).flags == "S":
+            syn_detector_threader(packet)
+    except:
+        pass
+
+    print("test")
+    # passing to port scan detector
+    port_scan_starter(packet)
+
+
+scp.sniff(prn=lambda x: processor(x))
