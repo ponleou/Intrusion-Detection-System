@@ -194,11 +194,17 @@ def unique_port_organizer(packet):
 def port_scan_detector():
     while True:
         time.sleep(ps_timeout)
-        for interaction in unique_interaction_accessing_port:
-            if len(interaction) >= ps_threshold:
-                print(datetime.now(), "WARNING: Portscan detected")
 
-            reset_unique_port()
+        for interaction_name in unique_interaction_accessing_port:
+
+            if len(unique_interaction_accessing_port[interaction_name]) >= ps_threshold:
+                ip = interaction_name.split(" and ")
+                print(
+                    datetime.now(),
+                    "WARNING: Portscan detected by " + ip[0] + " targetted on " + ip[1],
+                )
+
+        reset_unique_port()
 
 
 port_scan_detector_thread = threading.Thread(target=port_scan_detector)
