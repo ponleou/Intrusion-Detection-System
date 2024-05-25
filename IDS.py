@@ -21,7 +21,7 @@ interaction_missing_packets = {}
 
 def logging(msg, file_name="ids_logs.txt"):
     with open(file_name, "a") as f:
-        f.write(msg + "\n")
+        f.write(str(datetime.now()) + ": " + msg + "\n")
 
 
 # function to run find_pkt_thread function in another thread
@@ -106,9 +106,7 @@ def pkt_flag_processor(packet):
 def log_missing_packet(packet_flag, src_ip, dst_ip):
     if verbose >= 3:
         logging(
-            str(datetime.now())
-            + ": "
-            + "No acknowledgement to "
+            "No acknowledgement to "
             + packet_flag
             + " packet found after timeout between "
             + src_ip
@@ -128,12 +126,7 @@ def log_missing_packet(packet_flag, src_ip, dst_ip):
 def log_success_handshake(packet):
     if verbose >= 1:
         logging(
-            str(datetime.now())
-            + ": "
-            + "Successful TCP handshake between "
-            + packet.src
-            + " and "
-            + packet.dst,
+            "Successful TCP handshake between " + packet.src + " and " + packet.dst,
         )
 
 
@@ -155,9 +148,7 @@ def missing_packet_flood_detector(time_check, threshold):
                 missing_packets += interaction_missing_packets[interaction]
 
             logging(
-                str(datetime.now())
-                + ": "
-                + str(missing_packets)
+                str(missing_packets)
                 + " missing acknowledgement packets within the last "
                 + str(time_check)
                 + " seconds",
@@ -169,9 +160,7 @@ def missing_packet_flood_detector(time_check, threshold):
                     ip = interaction.split(" and ")
 
                     logging(
-                        str(datetime.now())
-                        + ": "
-                        + "WARNING: SYN flood attack detected by "
+                        "WARNING: SYN flood attack detected by "
                         + ip[0]
                         + " targeting "
                         + ip[1],
@@ -223,9 +212,7 @@ def port_scan_detector():
             ip = interaction_name.split(" and ")
             if verbose >= 1:
                 logging(
-                    str(datetime.now())
-                    + ": "
-                    + ip[0]
+                    ip[0]
                     + " accessed "
                     + str(len(unique_interaction_accessing_port[interaction_name]))
                     + " ports of "
@@ -237,9 +224,7 @@ def port_scan_detector():
 
                 if verbose >= 0:
                     logging(
-                        str(datetime.now())
-                        + ": "
-                        + "WARNING: Portscan detected by "
+                        "WARNING: Portscan detected by "
                         + ip[0]
                         + " targeting "
                         + ip[1],
