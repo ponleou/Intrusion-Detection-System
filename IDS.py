@@ -239,12 +239,39 @@ def port_scan_detector():
 port_scan_detector_thread = threading.Thread(target=port_scan_detector)
 
 
+# UDP flood detector
+def udp_detector_threader(packet):
+    try:
+        if not packet.getlayer(scp.IP).proto == 17:  # UDP protocol's number is 17
+            return
+    except:
+        return
+
+    src_ip = packet.getlayer(scp.IP).src
+    dst_ip = packet.getlayer(scp.IP).dst
+    src_port = packet.getlayer(scp.UDP).sport
+    dst_port = packet.getlayer(scp.UDP).dport
+    src_mac_ad = packet.src
+    dst_mac_ad = packet.dst
+
+    thread = threading.Thread(
+        target=find_icmp_pkt_thread,
+        args=(src_ip, dst_ip, src_port, dst_port, src_mac_ad, dst_mac_ad),
+    )
+    thread.start()
+
+
+def find_icmp_pkt_thread(src_ip, dst_ip, src_port, dst_port, src_mac_ad, dst_mac_ad):
+    pass
+
+
 # sending pckets to the correct detector
 def processor(packet):
     # passing to syn flood detector
     syn_detector_threader(packet)
     # sorts and count unique ports (used for port scanning)
     unique_port_organizer(packet)
+    #
 
 
 synflood_detector_thread.start()
