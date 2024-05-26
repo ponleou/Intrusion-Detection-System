@@ -1,5 +1,4 @@
 import scapy.all as scp
-import random
 
 source_ip = input("Fake Source IP (blank for random IP): ")
 target_ip = input("Target IP: ")

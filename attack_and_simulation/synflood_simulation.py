@@ -1,5 +1,4 @@
 import scapy.all as scp
-import random
 
 MAX_PORT = 65535
 
