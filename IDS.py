@@ -7,10 +7,13 @@ import time
 # Users can adjust these values
 syn_time_check = 2  # seconds for each SYN flood check (lower time means less sensitive)
 syn_threshold = 100  # minimum amount of missing packets in the period of time_check to alert detection of SYN flood (Higher means less sensitive)
+
 ps_threshold = 40  # minimum amount of unique accessed ports to alert port scan (higher means less sentitive)
-verbose = 3  # 0 to 3 (-1 for no logs)
+
+verbose = 3  # log levels, from 0 to 3 (-1 for no logs)
 
 
+# Users can adjust with caution (affects the effectiveness of the detection)
 ps_time_check = 30  # seconds, change only if you know what you are doing
 syn_timeout = 2  # seconds, change only if you know what you are doing
 
@@ -157,13 +160,13 @@ def missing_packet_flood_detector(time_check, threshold):
         if verbose >= 0:
             for interaction in interaction_missing_packets:
                 if interaction_missing_packets[interaction] >= threshold:
-                    ip = interaction.split(" and ")
+                    mac_ad = interaction.split(" and ")
 
                     logging(
                         "WARNING: SYN flood attack detected by "
-                        + ip[0]
+                        + mac_ad[0]
                         + " targeting "
-                        + ip[1],
+                        + mac_ad[1],
                     )
 
         reset_interaction_missing_packets()
@@ -209,14 +212,14 @@ def port_scan_detector():
 
         for interaction_name in unique_interaction_accessing_port:
 
-            ip = interaction_name.split(" and ")
+            mac_ad = interaction_name.split(" and ")
             if verbose >= 1:
                 logging(
-                    ip[0]
+                    mac_ad[0]
                     + " accessed "
                     + str(len(unique_interaction_accessing_port[interaction_name]))
                     + " ports of "
-                    + ip[1]
+                    + mac_ad[1]
                     + "'s connection",
                 )
 
@@ -225,9 +228,9 @@ def port_scan_detector():
                 if verbose >= 0:
                     logging(
                         "WARNING: Portscan detected by "
-                        + ip[0]
+                        + mac_ad[0]
                         + " targeting "
-                        + ip[1],
+                        + mac_ad[1],
                     )
 
         reset_unique_port()
