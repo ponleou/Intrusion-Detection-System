@@ -240,6 +240,19 @@ port_scan_detector_thread = threading.Thread(target=port_scan_detector)
 
 
 # UDP flood detector
+udp_timeout = 2
+udp_threshold = 100
+
+udp_time_check = 2
+
+interaction_icmp_error = {}
+
+
+def reset_icmp_error():
+    global interaction_icmp_error
+    interaction_icmp_error = {}
+
+
 def udp_detector_threader(packet):
     try:
         if not packet.getlayer(scp.IP).proto == 17:  # UDP protocol's number is 17
@@ -262,7 +275,61 @@ def udp_detector_threader(packet):
 
 
 def find_icmp_pkt_thread(src_ip, dst_ip, src_port, dst_port, src_mac_ad, dst_mac_ad):
-    pass
+    scp.sniff(
+        filter="icmp src host " + dst_ip + " and dst host " + src_ip,
+        prn=lambda x: icmp_pkt_checker(x, src_port, dst_port, src_mac_ad, dst_mac_ad),
+        timeout=udp_timeout,
+    )
+
+
+def icmp_pkt_checker(packet, src_port, dst_port, src_mac_ad, dst_mac_ad):
+
+    # ICMP type 3 is for "distination unreachable"
+    if not packet.getlayer(scp.ICMP).type == 3:
+        return
+
+    # ICMP code 3 is for "port is unreachable"
+    if not packet.getlayer(scp.ICMP).code == 3:
+        return
+
+    if (
+        packet.getlayer(scp.UDPerror).sport == src_port
+        and packet.getlayer(scp.UDPerror).dport == dst_port
+    ):
+
+        interaction_name = src_mac_ad + " and " + dst_mac_ad
+
+        if interaction_name not in interaction_icmp_error:
+            interaction_icmp_error[interaction_name] = 0
+
+        interaction_icmp_error[src_mac_ad + " and " + dst_mac_ad] += 1
+
+
+def udpflood_detector():
+    while True:
+        time.sleep(udp_time_check)
+
+        for interaction_name in interaction_icmp_error:
+            mac_ad = interaction_name.split(" and ")
+
+            if verbose >= 1:
+                logging(
+                    "ICMP Destination error (Port not found) packet sent from "
+                    + mac_ad[1]
+                    + " to "
+                    + mac_ad[0]
+                )
+
+            if interaction_icmp_error[interaction_name] >= udp_threshold:
+                if verbose >= 0:
+                    logging(
+                        "WARNING: UDP flood detected by "
+                        + mac_ad[0]
+                        + " targeting "
+                        + mac_ad[1]
+                    )
+
+        reset_icmp_error()
 
 
 # sending pckets to the correct detector
@@ -271,7 +338,8 @@ def processor(packet):
     syn_detector_threader(packet)
     # sorts and count unique ports (used for port scanning)
     unique_port_organizer(packet)
-    #
+    # passing to udp flood detector
+    udp_detector_threader(packet)
 
 
 synflood_detector_thread.start()
