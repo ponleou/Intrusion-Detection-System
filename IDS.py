@@ -240,7 +240,7 @@ port_scan_detector_thread = threading.Thread(target=port_scan_detector)
 
 
 # UDP flood detector
-udp_timeout = 2
+udp_timeout = 10
 udp_threshold = 100
 
 udp_time_check = 2
@@ -276,13 +276,17 @@ def udp_detector_threader(packet):
 
 def find_icmp_pkt_thread(src_ip, dst_ip, src_port, dst_port, src_mac_ad, dst_mac_ad):
     scp.sniff(
-        filter="icmp src host " + dst_ip + " and dst host " + src_ip,
-        prn=lambda x: icmp_pkt_checker(x, src_port, dst_port, src_mac_ad, dst_mac_ad),
+        filter="icmp",
+        prn=lambda x: icmp_pkt_checker(
+            x, src_ip, dst_ip, src_port, dst_port, src_mac_ad, dst_mac_ad
+        ),
         timeout=udp_timeout,
     )
 
 
-def icmp_pkt_checker(packet, src_port, dst_port, src_mac_ad, dst_mac_ad):
+def icmp_pkt_checker(
+    packet, src_ip, dst_ip, src_port, dst_port, src_mac_ad, dst_mac_ad
+):
 
     # ICMP type 3 is for "distination unreachable"
     try:
@@ -296,6 +300,12 @@ def icmp_pkt_checker(packet, src_port, dst_port, src_mac_ad, dst_mac_ad):
         if not packet.getlayer(scp.ICMP).code == 3:
             return
     except:
+        return
+
+    if (
+        not packet.getlayer(scp.IPerror).src == src_ip
+        and not packet.getlayer(scp.IPerror).dst == dst_ip
+    ):
         return
 
     if (
@@ -334,7 +344,7 @@ def udpflood_detector():
                         + " targeting "
                         + mac_ad[1]
                     )
-
+        print(interaction_icmp_error)
         reset_icmp_error()
 
 
