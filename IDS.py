@@ -285,11 +285,17 @@ def find_icmp_pkt_thread(src_ip, dst_ip, src_port, dst_port, src_mac_ad, dst_mac
 def icmp_pkt_checker(packet, src_port, dst_port, src_mac_ad, dst_mac_ad):
 
     # ICMP type 3 is for "distination unreachable"
-    if not packet.getlayer(scp.ICMP).type == 3:
+    try:
+        if not packet.getlayer(scp.ICMP).type == 3:
+            return
+    except:
         return
 
     # ICMP code 3 is for "port is unreachable"
-    if not packet.getlayer(scp.ICMP).code == 3:
+    try:
+        if not packet.getlayer(scp.ICMP).code == 3:
+            return
+    except:
         return
 
     if (
@@ -332,6 +338,9 @@ def udpflood_detector():
         reset_icmp_error()
 
 
+udpflood_detector_thread = threading.Thread(target=udpflood_detector)
+
+
 # sending pckets to the correct detector
 def processor(packet):
     # passing to syn flood detector
@@ -344,4 +353,5 @@ def processor(packet):
 
 synflood_detector_thread.start()
 port_scan_detector_thread.start()
+udpflood_detector_thread.start()
 scp.sniff(prn=processor)
