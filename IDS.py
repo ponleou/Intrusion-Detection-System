@@ -392,6 +392,7 @@ def icmp_pkt_counter(interaction_name):
     interaction_icmp_pkt_count[interaction_name] += 1
 
 
+# detector for UDP flood
 def udpflood_detector_threader(udpflood_record_reset_counter):
     while True:
         time.sleep(udp_time_check)
@@ -428,7 +429,7 @@ def udpflood_detector_threader(udpflood_record_reset_counter):
         if run_reset_counter:
             udpflood_record_reset_counter += 1
 
-        max_counter = udp_time_reset / udp_time_check
+        max_counter = udp_info_time_reset / udp_time_check
         # makes it so udpflood records are reseted after udp_time_reset seconds (resets after a udp flood check)
 
         if udpflood_record_reset_counter >= max_counter or run_reset:
