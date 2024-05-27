@@ -366,10 +366,10 @@ def icmp_pkt_listener(packet):
                 udp_pkts_info[interaction_name][1][i]
                 == packet.getlayer(scp.UDPerror).dport
             ):
-                icmp_pkt_sorter(src_mac_ad + ", " + dst_mac_ad)
+                icmp_pkt_counter(src_mac_ad + ", " + dst_mac_ad)
 
 
-interaction_icmp_pkt = {}
+interaction_icmp_pkt_count = {}
 
 
 # to reset the recorded UDP packet information
@@ -377,19 +377,19 @@ def udpflood_record_reset():
     global udp_pkts_info
     udp_pkts_info = {}
 
-    global interaction_icmp_pkt
-    interaction_icmp_pkt = {}
+    global interaction_icmp_pkt_count
+    interaction_icmp_pkt_count = {}
 
     global udpflood_record_reset_counter
     udpflood_record_reset_counter = 0
 
 
-def icmp_pkt_sorter(interaction_name):
+def icmp_pkt_counter(interaction_name):
 
-    if interaction_name not in interaction_icmp_pkt:
-        interaction_icmp_pkt[interaction_name] = 0
+    if interaction_name not in interaction_icmp_pkt_count:
+        interaction_icmp_pkt_count[interaction_name] = 0
 
-    interaction_icmp_pkt[interaction_name] += 1
+    interaction_icmp_pkt_count[interaction_name] += 1
 
 
 def udpflood_detector_threader(udpflood_record_reset_counter):
@@ -399,20 +399,20 @@ def udpflood_detector_threader(udpflood_record_reset_counter):
         run_reset_counter = True
         run_reset = False
 
-        for interaction_name in interaction_icmp_pkt:
+        for interaction_name in interaction_icmp_pkt_count:
             mac_ad = interaction_name.split(", ")
 
             if verbose >= 1:
 
                 logging(
-                    str(interaction_icmp_pkt[interaction_name])
+                    str(interaction_icmp_pkt_count[interaction_name])
                     + " ICMP Destination unreachable (port unreachable) packets sent from "
                     + mac_ad[1]
                     + " to "
                     + mac_ad[0]
                 )
 
-            if interaction_icmp_pkt[interaction_name] >= udp_threshold:
+            if interaction_icmp_pkt_count[interaction_name] >= udp_threshold:
 
                 if verbose >= 0:
                     logging(
