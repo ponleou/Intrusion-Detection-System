@@ -13,10 +13,11 @@ ps_threshold = 40  # minimum amount of unique accessed ports to alert port scan 
 udp_time_check = 5
 udp_threshold = 100
 
-verbose = 3  # log levels, from 0 to 3 (-1 for no logs)
+verbose = 1  # log levels, from 0 to 3 (-1 for no logs)
 
 
 # Users can adjust with caution (affects the effectiveness of the detection)
+udp_time_reset = 30
 ps_time_check = 30  # seconds, change only if you know what you are doing
 syn_timeout = 2  # seconds, change only if you know what you are doing
 
@@ -283,6 +284,7 @@ port_scan_detector_thread = threading.Thread(target=port_scan_detector)
 
 
 # UDP flood detector
+udpflood_record_reset_counter = 0
 udp_pkt_ports = {}  # TODO: clear this packet every now and then
 
 
@@ -327,12 +329,64 @@ def icmp_pkt_listener(packet):
 interaction_icmp_pkt = {}
 
 
+def udpflood_record_reset():
+    global udp_pkt_ports
+    udp_pkt_ports = {}
+
+    global interaction_icmp_pkt
+    interaction_icmp_pkt = {}
+
+
 def icmp_pkt_sorter(interaction_name):
 
     if interaction_name not in interaction_icmp_pkt:
         interaction_icmp_pkt[interaction_name] = 0
 
     interaction_icmp_pkt[interaction_name] += 1
+
+
+def udpflood_detector_threader():
+    while True:
+        time.sleep(udp_time_check)
+
+        for interaction_name in interaction_icmp_pkt:
+            mac_ad = interaction_name.split(", ")
+
+            if verbose >= 1:
+                logging(
+                    interaction_icmp_pkt[interaction_name]
+                    + " ICMP Destination unreachable (port unreachable) packets sent from "
+                    + mac_ad[1]
+                    + " to "
+                    + mac_ad[0]
+                )
+
+            global udpflood_record_reset_counter
+
+            if interaction_icmp_pkt[interaction_name] >= udp_threshold:
+
+                if verbose >= 0:
+                    logging(
+                        "WARNING: UDP flood detected by "
+                        + mac_ad[0]
+                        + " targeting "
+                        + mac_ad[1]
+                    )
+
+                udpflood_record_reset()
+                udpflood_record_reset_counter = 0
+
+            else:
+                udpflood_record_reset_counter += 1
+
+        max_counter = udp_time_reset / udp_time_check
+        # makes it so udpflood records are reseted after udp_time_reset seconds (resets after a udp flood check)
+
+        if udpflood_record_reset_counter >= max_counter:
+            udpflood_record_reset()
+
+
+udpflood_detector_thread = threading.Thread(target=udpflood_detector_threader)
 
 
 # sending pckets to the correct detector
@@ -349,5 +403,5 @@ def processor(packet):
 
 synflood_detector_thread.start()
 port_scan_detector_thread.start()
-# udpflood_detector_thread.start()
+udpflood_detector_thread.start()
 scp.sniff(prn=processor)
