@@ -18,22 +18,54 @@ ps_time_check = 30  # seconds, change only if you know what you are doing
 syn_timeout = 2  # seconds, change only if you know what you are doing
 
 
-# SYN FLOOD DETECTOR
-interaction_missing_packets = {}
-
-
 def logging(msg, file_name="ids_logs.txt"):
     with open(file_name, "a") as f:
         f.write(str(datetime.now()) + ": " + msg + "\n")
 
 
+def syn_filter(packet):
+    is_syn_flag = False
+
+    try:
+        if packet.getlayer(scp.TCP).flags == "S":
+            is_syn_flag = True
+    except:
+        pass
+
+    return is_syn_flag
+
+
+def unique_port_organizer(packet, dictionary, src_or_dst_port=[True, True]):
+    interaction_name = packet.src + ", " + packet.dst
+
+    if interaction_name not in dictionary:
+        dictionary[interaction_name] = [[], []]
+    # dictionary = {
+    #   interaction_name = [
+    #       [packet.sports...],
+    #       [packet.dports...]
+    #   ],...
+    # }
+
+    if src_or_dst_port[0]:
+        if packet.sport not in dictionary[interaction_name]:
+            dictionary[interaction_name][0].append(packet.sport)
+
+    if src_or_dst_port[1]:
+        if packet.dport not in dictionary[interaction_name]:
+            dictionary[interaction_name][1].append(packet.dport)
+
+
+# SYN FLOOD DETECTOR
+interaction_missing_packets = {}
+
+
 # function to run find_pkt_thread function in another thread
 def syn_detector_threader(packet):
 
-    try:
-        if not packet.getlayer(scp.TCP).flags == "S":
-            return
-    except:
+    is_syn_flag = syn_filter(packet)
+
+    if not is_syn_flag:
         return
 
     src_ip = packet.getlayer(scp.IP).src
@@ -177,6 +209,7 @@ synflood_detector_thread = threading.Thread(
 )
 
 
+# PORTSCAN DETECTOR
 # dictionary for holding unique devices and the ports they are accessing (used for port scan)
 unique_interaction_accessing_port = {}
 
@@ -186,24 +219,14 @@ def reset_unique_port():
     unique_interaction_accessing_port = {}
 
 
-# PORTSCAN DETECTOR
+def port_scan_processor(packet, dictionary):
 
+    is_syn_flag = syn_filter(packet)
 
-def unique_port_organizer(packet):
-
-    try:
-        if not packet.getlayer(scp.TCP).flags == "S":
-            return
-    except:
+    if not is_syn_flag:
         return
 
-    interaction_name = packet.src + " and " + packet.dst
-
-    if interaction_name not in unique_interaction_accessing_port:
-        unique_interaction_accessing_port[interaction_name] = []
-
-    if packet.dport not in unique_interaction_accessing_port[interaction_name]:
-        unique_interaction_accessing_port[interaction_name].append(packet.dport)
+    unique_port_organizer(packet, dictionary, [False, True])  # only taking dport
 
 
 def port_scan_detector():
@@ -212,7 +235,7 @@ def port_scan_detector():
 
         for interaction_name in unique_interaction_accessing_port:
 
-            mac_ad = interaction_name.split(" and ")
+            mac_ad = interaction_name.split(", ")
             if verbose >= 1:
                 logging(
                     mac_ad[0]
@@ -223,7 +246,10 @@ def port_scan_detector():
                     + "'s connection",
                 )
 
-            if len(unique_interaction_accessing_port[interaction_name]) >= ps_threshold:
+            if (
+                len(unique_interaction_accessing_port[interaction_name][1])
+                >= ps_threshold
+            ):
 
                 if verbose >= 0:
                     logging(
@@ -239,16 +265,21 @@ def port_scan_detector():
 port_scan_detector_thread = threading.Thread(target=port_scan_detector)
 
 
+# def
+
+
 # sending pckets to the correct detector
 def processor(packet):
     # passing to syn flood detector
     syn_detector_threader(packet)
     # sorts and count unique ports (used for port scanning)
-    unique_port_organizer(packet)
+    port_scan_processor(packet, unique_interaction_accessing_port)
     # passing to udp flood detector
     # udp_detector_threader(packet)
+    # passing to icmp type and code scanner
 
 
 synflood_detector_thread.start()
 port_scan_detector_thread.start()
+# udpflood_detector_thread.start()
 scp.sniff(prn=processor)
