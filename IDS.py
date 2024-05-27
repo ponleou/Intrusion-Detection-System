@@ -6,18 +6,18 @@ import time
 
 # Users can adjust these values
 syn_time_check = 2  # seconds for each SYN flood check (lower time means less sensitive)
-syn_threshold = 100  # minimum amount of missing packets in the period of time_check to alert detection of SYN flood (Higher means less sensitive)
+syn_threshold = 100  # minimum amount of missing packets in the period of syn_time_check to alert detection of SYN flood (Higher means less sensitive)
 
 ps_threshold = 40  # minimum amount of unique accessed ports to alert port scan (higher means less sentitive)
 
-udp_time_check = 5
-udp_threshold = 100
+udp_time_check = 5  # seconds for each UDP flood check (lower time means less sensitive)
+udp_threshold = 100  # minimum amount of ICMP packets in response to UDP packets in the peroid of udp_time_check to alert UDP flood (higher means less sensitive)
 
 verbose = 1  # log levels, from 0 to 3 (-1 for no logs)
 
 
 # Users can adjust with caution (affects the effectiveness of the detection)
-udp_time_reset = 30
+udp_info_time_reset = 30  # seconds, to reset the collected udp packets information
 ps_time_check = 30  # seconds, change only if you know what you are doing
 syn_timeout = 2  # seconds, change only if you know what you are doing
 
@@ -318,6 +318,8 @@ def udp_flood_processor(packet):
 
     # creating a dictionary on udp_pkt_info to include unique ports
     unique_port_organizer(packet, udp_pkts_info, [True, True], [True, False])
+    # [True, True] to record both source and destination ports
+    # [True, False] to record the source IP address (written inside the key's name)
 
 
 # listens for icmp packets, and cross checks them for correct source and destination for ip/mac address and ports with the udp packets info
@@ -325,6 +327,7 @@ def icmp_pkt_listener(packet):
     if not packet.haslayer(scp.ICMP):
         return
 
+    # ICMP type 3 is Destination unreachable, ICMP code 3 is Port unreachable
     if (
         not packet.getlayer(scp.ICMP).type == 3
         and not packet.getlayer(scp.ICMP).code == 3
@@ -332,26 +335,28 @@ def icmp_pkt_listener(packet):
         return
 
     for interaction_name in udp_pkts_info:
+
         mac_ad = interaction_name.split(", ")
 
         dst_mac_ad = mac_ad[1]
 
+        # extra separation and formatting because the interaction name includes IP for the source
         src_mac_and_ip = mac_ad[0].split("(")
-
         src_mac_ad = src_mac_and_ip[0]
-
         src_ip = ""
 
         # some UDP packets don't have IP layer, which means no IP source or destination
         if len(src_mac_and_ip) >= 2:
             src_ip = src_mac_and_ip[1].replace(")", "")
 
+        # checking whether the UDP and ICMP response packet have the same source and destination IP/mac address
         if not packet.src == dst_mac_ad:
             continue
 
         if not packet.getlayer(scp.IP).dst == src_ip:
             continue
 
+        # checking whether the UDP and ICMP response packet have the same source and destination ports
         for i, sport in enumerate(udp_pkts_info[interaction_name][0]):
 
             if not sport == packet.getlayer(scp.UDPerror).sport:
@@ -367,6 +372,7 @@ def icmp_pkt_listener(packet):
 interaction_icmp_pkt = {}
 
 
+# to reset the recorded UDP packet information
 def udpflood_record_reset():
     global udp_pkts_info
     udp_pkts_info = {}
