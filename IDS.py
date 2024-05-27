@@ -10,6 +10,9 @@ syn_threshold = 100  # minimum amount of missing packets in the period of time_c
 
 ps_threshold = 40  # minimum amount of unique accessed ports to alert port scan (higher means less sentitive)
 
+udp_time_check = 5
+udp_threshold = 100
+
 verbose = 3  # log levels, from 0 to 3 (-1 for no logs)
 
 
@@ -33,6 +36,18 @@ def syn_filter(packet):
         pass
 
     return is_syn_flag
+
+
+def udp_filter(packet):
+    is_udp_protocol = False
+
+    try:
+        if packet.hasayer(scp.UDP):
+            is_udp_protocol = True
+    except:
+        pass
+
+    return is_udp_protocol
 
 
 def unique_port_organizer(packet, dictionary, src_or_dst_port=[True, True]):
@@ -219,14 +234,16 @@ def reset_unique_port():
     unique_interaction_accessing_port = {}
 
 
-def port_scan_processor(packet, dictionary):
+def port_scan_processor(packet):
 
     is_syn_flag = syn_filter(packet)
 
     if not is_syn_flag:
         return
 
-    unique_port_organizer(packet, dictionary, [False, True])  # only taking dport
+    unique_port_organizer(
+        packet, unique_interaction_accessing_port, [False, True]
+    )  # only taking dport
 
 
 def port_scan_detector():
@@ -265,7 +282,57 @@ def port_scan_detector():
 port_scan_detector_thread = threading.Thread(target=port_scan_detector)
 
 
-# def
+# UDP flood detector
+udp_pkt_ports = {}  # TODO: clear this packet every now and then
+
+
+def udp_flood_processor(packet):
+
+    is_udp = udp_filter(packet)
+
+    if not is_udp:
+        return
+
+    unique_port_organizer(packet, udp_pkt_ports, [True, True])
+
+
+def icmp_pkt_listener(packet):
+    if not packet.haslayer(scp.ICMP):
+        return
+
+    if (
+        not packet.getlayer(scp.ICMP).type == 3
+        and not packet.getlayer(scp.ICMP).code == 3
+    ):
+        return
+
+    for interaction_name in udp_pkt_ports:
+        mac_ad = interaction_name.split(", ")
+
+        if not packet.src == mac_ad[1]:
+            continue
+
+        if not packet.dst == mac_ad[0]:
+            continue
+
+        for i, sport in enumerate(interaction_name[0]):
+
+            if not sport == packet.getlayer(scp.UDPerror).sport:
+                continue
+
+            if interaction_name[1][i] == packet.getlayer(scp.UDPerror).dport:
+                icmp_pkt_sorter(interaction_name)
+
+
+interaction_icmp_pkt = {}
+
+
+def icmp_pkt_sorter(interaction_name):
+
+    if interaction_name not in interaction_icmp_pkt:
+        interaction_icmp_pkt[interaction_name] = 0
+
+    interaction_icmp_pkt[interaction_name] += 1
 
 
 # sending pckets to the correct detector
@@ -273,9 +340,10 @@ def processor(packet):
     # passing to syn flood detector
     syn_detector_threader(packet)
     # sorts and count unique ports (used for port scanning)
-    port_scan_processor(packet, unique_interaction_accessing_port)
-    # passing to udp flood detector
-    # udp_detector_threader(packet)
+    port_scan_processor(packet)
+    # passing to udp flood detector and icmp listener
+    udp_flood_processor(packet)
+    icmp_pkt_listener(packet)
     # passing to icmp type and code scanner
 
 
