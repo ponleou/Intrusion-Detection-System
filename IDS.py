@@ -43,7 +43,7 @@ def udp_filter(packet):
     is_udp_protocol = False
 
     try:
-        if packet.hasayer(scp.UDP):
+        if packet.haslayer(scp.UDP):
             is_udp_protocol = True
     except:
         pass
@@ -51,8 +51,28 @@ def udp_filter(packet):
     return is_udp_protocol
 
 
-def unique_port_organizer(packet, dictionary, src_or_dst_port=[True, True]):
-    interaction_name = packet.src + ", " + packet.dst
+def unique_port_organizer(
+    packet, dictionary, src_or_dst_port=[True, True], src_or_dst_ip=[False, False]
+):
+    # src_or_dst_port can be changed to include or remove source port or destination port
+    # src_or_dst_ip can be changed to include or remove source ip or destination ip (stays in the name of each array: interaction_name)
+    packet_src = packet.src
+
+    # some UDP packets dont have IP layer
+    try:
+        if src_or_dst_ip[0]:
+            packet_src += "(" + packet.getlayer(scp.IP).src + ")"
+    except:
+        pass
+
+    packet_dst = packet.dst
+    try:
+        if src_or_dst_ip[1]:
+            packet_dst += "(" + packet.getlayer(scp.IP).dst + ")"
+    except:
+        pass
+
+    interaction_name = packet_src + ", " + packet_dst
 
     if interaction_name not in dictionary:
         dictionary[interaction_name] = [[], []]
@@ -64,11 +84,11 @@ def unique_port_organizer(packet, dictionary, src_or_dst_port=[True, True]):
     # }
 
     if src_or_dst_port[0]:
-        if packet.sport not in dictionary[interaction_name]:
+        if packet.sport not in dictionary[interaction_name][0]:
             dictionary[interaction_name][0].append(packet.sport)
 
     if src_or_dst_port[1]:
-        if packet.dport not in dictionary[interaction_name]:
+        if packet.dport not in dictionary[interaction_name][1]:
             dictionary[interaction_name][1].append(packet.dport)
 
 
@@ -243,7 +263,7 @@ def port_scan_processor(packet):
         return
 
     unique_port_organizer(
-        packet, unique_interaction_accessing_port, [False, True]
+        packet, unique_interaction_accessing_port, [True, False]
     )  # only taking dport
 
 
@@ -285,9 +305,10 @@ port_scan_detector_thread = threading.Thread(target=port_scan_detector)
 
 # UDP flood detector
 udpflood_record_reset_counter = 0
-udp_pkt_ports = {}  # TODO: clear this packet every now and then
+udp_pkts_info = {}
 
 
+# function to send packet variable to other functions
 def udp_flood_processor(packet):
 
     is_udp = udp_filter(packet)
@@ -295,9 +316,11 @@ def udp_flood_processor(packet):
     if not is_udp:
         return
 
-    unique_port_organizer(packet, udp_pkt_ports, [True, True])
+    # creating a dictionary on udp_pkt_info to include unique ports
+    unique_port_organizer(packet, udp_pkts_info, [True, True], [True, False])
 
 
+# listens for icmp packets, and cross checks them for correct source and destination for ip/mac address and ports with the udp packets info
 def icmp_pkt_listener(packet):
     if not packet.haslayer(scp.ICMP):
         return
@@ -308,33 +331,51 @@ def icmp_pkt_listener(packet):
     ):
         return
 
-    for interaction_name in udp_pkt_ports:
+    for interaction_name in udp_pkts_info:
         mac_ad = interaction_name.split(", ")
 
-        if not packet.src == mac_ad[1]:
+        dst_mac_ad = mac_ad[1]
+
+        src_mac_and_ip = mac_ad[0].split("(")
+
+        src_mac_ad = src_mac_and_ip[0]
+
+        src_ip = ""
+
+        # some UDP packets don't have IP layer, which means no IP source or destination
+        if len(src_mac_and_ip) >= 2:
+            src_ip = src_mac_and_ip[1].replace(")", "")
+
+        if not packet.src == dst_mac_ad:
             continue
 
-        if not packet.dst == mac_ad[0]:
+        if not packet.getlayer(scp.IP).dst == src_ip:
             continue
 
-        for i, sport in enumerate(interaction_name[0]):
+        for i, sport in enumerate(udp_pkts_info[interaction_name][0]):
 
             if not sport == packet.getlayer(scp.UDPerror).sport:
                 continue
 
-            if interaction_name[1][i] == packet.getlayer(scp.UDPerror).dport:
-                icmp_pkt_sorter(interaction_name)
+            if (
+                udp_pkts_info[interaction_name][1][i]
+                == packet.getlayer(scp.UDPerror).dport
+            ):
+                icmp_pkt_sorter(src_mac_ad + ", " + dst_mac_ad)
 
 
 interaction_icmp_pkt = {}
 
 
 def udpflood_record_reset():
-    global udp_pkt_ports
-    udp_pkt_ports = {}
+    global udp_pkts_info
+    udp_pkts_info = {}
 
     global interaction_icmp_pkt
     interaction_icmp_pkt = {}
+
+    global udpflood_record_reset_counter
+    udpflood_record_reset_counter = 0
 
 
 def icmp_pkt_sorter(interaction_name):
@@ -345,23 +386,23 @@ def icmp_pkt_sorter(interaction_name):
     interaction_icmp_pkt[interaction_name] += 1
 
 
-def udpflood_detector_threader():
+def udpflood_detector_threader(udpflood_record_reset_counter):
     while True:
         time.sleep(udp_time_check)
-
         for interaction_name in interaction_icmp_pkt:
             mac_ad = interaction_name.split(", ")
 
             if verbose >= 1:
+
+                print(interaction_icmp_pkt[interaction_name])
+
                 logging(
-                    interaction_icmp_pkt[interaction_name]
+                    str(interaction_icmp_pkt[interaction_name])
                     + " ICMP Destination unreachable (port unreachable) packets sent from "
                     + mac_ad[1]
                     + " to "
                     + mac_ad[0]
                 )
-
-            global udpflood_record_reset_counter
 
             if interaction_icmp_pkt[interaction_name] >= udp_threshold:
 
@@ -374,7 +415,6 @@ def udpflood_detector_threader():
                     )
 
                 udpflood_record_reset()
-                udpflood_record_reset_counter = 0
 
             else:
                 udpflood_record_reset_counter += 1
@@ -386,7 +426,9 @@ def udpflood_detector_threader():
             udpflood_record_reset()
 
 
-udpflood_detector_thread = threading.Thread(target=udpflood_detector_threader)
+udpflood_detector_thread = threading.Thread(
+    target=udpflood_detector_threader, args=(udpflood_record_reset_counter,)
+)
 
 
 # sending pckets to the correct detector
