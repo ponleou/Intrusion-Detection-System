@@ -389,12 +389,14 @@ def icmp_pkt_sorter(interaction_name):
 def udpflood_detector_threader(udpflood_record_reset_counter):
     while True:
         time.sleep(udp_time_check)
+
+        run_reset_counter = True
+        run_reset = False
+
         for interaction_name in interaction_icmp_pkt:
             mac_ad = interaction_name.split(", ")
 
             if verbose >= 1:
-
-                print(interaction_icmp_pkt[interaction_name])
 
                 logging(
                     str(interaction_icmp_pkt[interaction_name])
@@ -414,15 +416,16 @@ def udpflood_detector_threader(udpflood_record_reset_counter):
                         + mac_ad[1]
                     )
 
-                udpflood_record_reset()
+                run_reset_counter = False
+                run_reset = True
 
-            else:
-                udpflood_record_reset_counter += 1
+        if run_reset_counter:
+            udpflood_record_reset_counter += 1
 
         max_counter = udp_time_reset / udp_time_check
         # makes it so udpflood records are reseted after udp_time_reset seconds (resets after a udp flood check)
 
-        if udpflood_record_reset_counter >= max_counter:
+        if udpflood_record_reset_counter >= max_counter or run_reset:
             udpflood_record_reset()
 
 
@@ -443,7 +446,8 @@ def processor(packet):
     # passing to icmp type and code scanner
 
 
-synflood_detector_thread.start()
-port_scan_detector_thread.start()
-udpflood_detector_thread.start()
-scp.sniff(prn=processor)
+if __name__ == "__main__":
+    synflood_detector_thread.start()
+    port_scan_detector_thread.start()
+    udpflood_detector_thread.start()
+    scp.sniff(prn=processor)
