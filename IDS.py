@@ -450,7 +450,6 @@ def processor(packet):
     # passing to udp flood detector and icmp listener
     udp_flood_processor(packet)
     icmp_pkt_listener(packet)
-    # passing to icmp type and code scanner
 
 
 if __name__ == "__main__":
