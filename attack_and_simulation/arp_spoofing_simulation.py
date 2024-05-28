@@ -35,8 +35,8 @@ def restore(destination_ip, source_ip):
         hwdst=destination_mac,
         psrc=source_ip,
         hwsrc=source_mac,
-    )
-    scp.send(packet, count=4, verbose=False)  # sending 4 packets incase of packet loss
+    )  # setting the hwsrc back to its correct mac address
+    scp.send(packet, count=4, verbose=False)  # sending 4 packets in case of packet loss
 
 
 sent_packets = 0
