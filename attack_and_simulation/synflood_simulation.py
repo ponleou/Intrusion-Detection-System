@@ -15,7 +15,7 @@ def synflood_simulation(ip_src, ip_dst, target_port):
     tcp_layer = scp.TCP(dport=int(target_port), flags="S")
     packet = ip_layer / tcp_layer
 
-    scp.send(packet, loop=1)
+    scp.send(packet, loop=1, verbose=False)
     print(packet)
 
 

@@ -12,7 +12,7 @@ def udpflood_simulation(ip_src, ip_dst):
     udp_layer = scp.UDP(sport=scp.RandShort(), dport=scp.RandShort())
     packet = ip_layer / udp_layer
 
-    scp.send(packet, loop=1)
+    scp.send(packet, loop=1, verbose=False)
     print(packet)
 
 
