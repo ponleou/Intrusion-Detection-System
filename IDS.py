@@ -17,6 +17,7 @@ verbose = 1  # log levels, from 0 to 3 (-1 for no logs)
 
 
 # Users can adjust with caution (affects the effectiveness of the detection)
+arp_timeout = 5  # seconds, to clean arp request memory
 udp_info_time_reset = 30  # seconds, to reset the collected udp packets information
 ps_time_check = 30  # seconds, change only if you know what you are doing
 syn_timeout = 2  # seconds, change only if you know what you are doing
@@ -465,6 +466,7 @@ ARP SPOOFING DETECTOR
 """
 
 arp_table = {}
+# TODO: output arp table onto a separate file
 
 
 def arp_spoof_processor(packet):
@@ -514,7 +516,6 @@ arp_request_memory = {}
 
 
 def store_arp_request(packet):
-
     request_psrc = packet.getlayer(scp.ARP).psrc  # ip of source/requester
     request_hwsrc = packet.getlayer(scp.ARP).hwsrc  # mac address of source/requester
 
@@ -523,9 +524,48 @@ def store_arp_request(packet):
     if request_psrc not in arp_request_memory:
         arp_request_memory[request_psrc] = {"request_to": [], "src_mac": []}
 
-    if request_pdst not in arp_request_memory[request_psrc]["request_to"]:
-        arp_request_memory[request_psrc]["request_to"].append(request_pdst)
-        arp_request_memory[request_psrc]["src_mac"].append(request_hwsrc)
+    arp_request_memory[request_psrc]["request_to"].append(request_pdst)
+    arp_request_memory[request_psrc]["src_mac"].append(request_hwsrc)
+
+    # run memory cleaner to clean out memory if reply packet is not found after timeout
+    cleaner_thread = threading.Thread(
+        target=arp_request_memory_cleaner,
+        args=(request_psrc, request_pdst, request_hwsrc),
+    )
+    cleaner_thread.start()
+
+
+def arp_request_memory_cleaner(request_psrc, request_pdst, request_hwsrc):
+    time.sleep(arp_timeout)
+
+    for arp_request_psrc in arp_request_memory:
+
+        if not request_psrc == arp_request_psrc:
+            continue
+
+        # FIXME: if two cleaner runs at once, and one cleaner cleans before the other one, it might cause an error
+        for i, arp_request_pdst in enumerate(
+            arp_request_memory[arp_request_psrc]["request_to"]
+        ):
+
+            if not arp_request_pdst == request_pdst:
+                continue
+
+            if not arp_request_memory[arp_request_psrc]["src_mac"][i] == request_hwsrc:
+                continue
+
+            del arp_request_memory[arp_request_psrc]["requested_to"][i]
+            del arp_request_memory[arp_request_psrc]["src_mac"][i]
+
+        print(
+            len(arp_request_memory[arp_request_psrc]["request_to"])
+            == len(arp_request_memory[arp_request_psrc]["src_mac"])
+        )
+        # TODO: delete this line after testing
+        # should ALWAYS output True, fix if it outputs False
+
+        if len(arp_request_memory[arp_request_psrc]["request_to"]) == 0:
+            del arp_request_memory[arp_request_psrc]
 
 
 def arp_reply(packet):
