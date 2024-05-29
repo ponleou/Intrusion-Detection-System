@@ -464,6 +464,8 @@ udpflood_detector_thread = threading.Thread(
 ARP SPOOFING DETECTOR
 """
 
+arp_table = {}
+
 
 def arp_spoof_processor(packet):
 
@@ -473,18 +475,116 @@ def arp_spoof_processor(packet):
     arp_op = get_arp_operation(packet)
 
     if arp_op == 1:
-        arp_request()
+        store_arp_request(packet)
 
     if arp_op == 2:
-        arp_reply()
+
+        is_valid_reply = arp_reply(packet)
+
+        if is_valid_reply:
+
+            update_arp_table(
+                packet.getlayer(scp.ARP).psrc, packet.getlayer(scp.ARP).hwsrc
+            )
+        else:
+            not_spoof_packet = check_arp_table
+            
+            if not not_spoof_packet:
+                arp_spoof_logger(packet)
 
 
-def arp_request():
-    pass
+def arp_spoof_logger(packet):
+    attacker = packet.src
+    target = packet.dst
+
+    if verbose >= 0:
+        logging(
+            "WARNING: Spoofed ARP packet detected by "
+            + attacker
+            + " targeting "
+            + target
+        )
 
 
-def arp_reply():
-    pass
+arp_request_memory = {}
+# TODO: clear memory after a timeout
+
+
+def store_arp_request(packet):
+
+    request_psrc = packet.getlayer(scp.ARP).psrc  # ip of source/requester
+    request_hwsrc = packet.getlayer(scp.ARP).hwsrc  # mac address of source/requester
+
+    request_pdst = packet.getlayer(scp.ARP).pdst  # ip of the requested
+
+    if request_psrc not in arp_request_memory:
+        arp_request_memory[request_psrc] = {"request_to": [], "src_mac": []}
+
+    if request_pdst not in arp_request_memory[request_psrc]["request_to"]:
+        arp_request_memory[request_psrc]["request_to"].append(request_pdst)
+        arp_request_memory[request_psrc]["src_mac"].append(request_hwsrc)
+
+
+def arp_reply(packet):
+    reply_psrc = packet.getlayer(scp.ARP).psrc
+
+    reply_pdst = packet.getlayer(scp.ARP).pdst
+    reply_hwdst = packet.getlayer(scp.ARP).hwdst
+
+    is_valid_reply = False
+
+    for request_psrc in arp_request_memory:
+        if not request_psrc == reply_pdst:
+            continue
+
+        for i, request_pdst in enumerate(
+            arp_request_memory[request_psrc]["requested_to"]
+        ):
+            if not request_pdst == reply_psrc:
+                continue
+
+            if not arp_request_memory[request_psrc]["src_mac"][i] == reply_hwdst:
+                continue
+
+            is_valid_reply = True
+            del arp_request_memory[request_psrc]["requested_to"][i]
+            del arp_request_memory[request_psrc]["src_mac"][i]
+            break
+
+    return is_valid_reply
+
+
+def update_arp_table(ip, mac_address):
+
+    if ip in arp_table:
+
+        if arp_table[ip] == mac_address:
+            return
+
+        # TODO: log that arp table has been changed/modified (not added)
+        pass
+
+    arp_table[ip] = mac_address
+
+
+def check_arp_table(ip, mac_address):
+
+    check_invalid_reply = False
+    # False means its a spoofed packet
+    # True means its a safe invalid packet
+
+    for arp_ip in arp_table:
+
+        if not ip == arp_ip:
+            continue
+
+        if arp_table[arp_ip] == mac_address:
+            check_invalid_reply = True
+
+    return check_invalid_reply
+
+
+# TODO: test if database would update to the spoof arp if ran long enough
 
 
 # sending pckets to the correct detector
