@@ -466,6 +466,13 @@ ARP SPOOFING DETECTOR
 """
 
 arp_table = {}
+
+
+def write_arp_table(file_name="arp_table.txt"):
+    with open(file_name, "w") as f:
+        f.write(str(arp_table))
+
+
 # TODO: output arp table onto a separate file
 
 
@@ -609,6 +616,9 @@ def update_arp_table(ip, mac_address):
         arp_table_is_modified = True
 
     arp_table[ip] = mac_address
+
+    write_arp_table()
+
     return arp_table_is_modified
 
 
