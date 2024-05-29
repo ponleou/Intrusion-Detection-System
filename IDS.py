@@ -17,7 +17,6 @@ verbose = 1  # log levels, from 0 to 3 (-1 for no logs)
 
 
 # Users can adjust with caution (affects the effectiveness of the detection)
-arp_timeout = 5  # seconds, to clean arp request memory
 udp_info_time_reset = 30  # seconds, to reset the collected udp packets information
 ps_time_check = 30  # seconds, change only if you know what you are doing
 syn_timeout = 2  # seconds, change only if you know what you are doing
@@ -470,28 +469,37 @@ udpflood_detector_thread = threading.Thread(
 ARP SPOOFING DETECTOR
 """
 
+arp_request_memory = {}
+# TODO: clear memory after a timeout
 arp_table = {}
 # TODO: take arp table from file
 # TODO: configure own local arp table
 
 
+# writing arp table into local file
 def write_arp_table(file_name="arp_table.txt"):
     with open(file_name, "w") as f:
         f.write(str(arp_table))
 
 
+# main function for arp spoof detection
 def arp_spoof_processor(packet):
 
+    # filtering ARP packets
     if not packet.haslayer(scp.ARP):
         return
 
     arp_op = get_arp_operation(packet)
 
+    # op = 1 is request packet
     if arp_op == 1:
         store_arp_request(packet)
 
+    # op =2 is reply packet
     if arp_op == 2:
 
+        # checks whether a reply matches any request stored in memory
+        # True if a reply matches a request, False if not
         is_valid_reply = arp_reply(packet)
 
         ip = packet.getlayer(scp.ARP).psrc
@@ -499,6 +507,7 @@ def arp_spoof_processor(packet):
 
         if is_valid_reply:
 
+            # returns True if valid arp reply packet changes the arp table
             is_modified = update_arp_table(ip, mac_address)
 
             if is_modified:
@@ -506,30 +515,19 @@ def arp_spoof_processor(packet):
                     logging(
                         "ARP table has been modified, " + ip + " is at " + mac_address
                     )
+
+        # process for invalid replies (reply without matching request)
         else:
+
+            # checking whether invalid packet matches current arp table (ignores invalid reply if its the same)
             not_spoof_packet = check_arp_table(ip, mac_address)
 
+            # if invalid reply doesn't match arp table, calls as arp spoof packet
             if not not_spoof_packet:
                 arp_spoof_logger(packet)
 
 
-def arp_spoof_logger(packet):
-    attacker = packet.src
-    target = packet.dst
-
-    if verbose >= 0:
-        logging(
-            "WARNING: Spoofed ARP packet detected by "
-            + attacker
-            + " targeting "
-            + target
-        )
-
-
-arp_request_memory = {}
-# TODO: clear memory after a timeout
-
-
+# stores arp requests packets to memory
 def store_arp_request(packet):
     request_psrc = packet.getlayer(scp.ARP).psrc  # ip of source/requester
     request_hwsrc = packet.getlayer(scp.ARP).hwsrc  # mac address of source/requester
@@ -537,56 +535,13 @@ def store_arp_request(packet):
     request_pdst = packet.getlayer(scp.ARP).pdst  # ip of the requested
 
     if request_psrc not in arp_request_memory:
-        arp_request_memory[request_psrc] = {"request_to": [], "src_mac": []}
+        arp_request_memory[request_psrc] = {"src_mac": [], "request_to": []}
 
     arp_request_memory[request_psrc]["request_to"].append(request_pdst)
     arp_request_memory[request_psrc]["src_mac"].append(request_hwsrc)
 
-    # print(arp_request_memory)
 
-    # run memory cleaner to clean out memory if reply packet is not found after timeout
-    # FIXME: RuntimeError: dictionary changed size during iteration
-    # cleaner_thread = threading.Thread(
-    #     target=arp_request_memory_cleaner,
-    #     args=(request_psrc, request_pdst, request_hwsrc),
-    # )
-    # cleaner_thread.start()
-
-
-def arp_request_memory_cleaner(request_psrc, request_pdst, request_hwsrc):
-    time.sleep(arp_timeout)
-
-    # FIXME: if two cleaner runs at once, and one cleaner cleans before the other one, it might cause an error
-    # RuntimeError: dictionary changed size during iteration
-    for arp_request_psrc in arp_request_memory:
-
-        if not request_psrc == arp_request_psrc:
-            continue
-
-        for i, arp_request_pdst in enumerate(
-            arp_request_memory[arp_request_psrc]["request_to"]
-        ):
-
-            if not arp_request_pdst == request_pdst:
-                continue
-
-            if not arp_request_memory[arp_request_psrc]["src_mac"][i] == request_hwsrc:
-                continue
-
-            del arp_request_memory[arp_request_psrc]["request_to"][i]
-            del arp_request_memory[arp_request_psrc]["src_mac"][i]
-
-        print(
-            len(arp_request_memory[arp_request_psrc]["request_to"])
-            == len(arp_request_memory[arp_request_psrc]["src_mac"])
-        )
-        # TODO: delete this line after testing
-        # should ALWAYS output True, fix if it outputs False
-
-        if len(arp_request_memory[arp_request_psrc]["request_to"]) == 0:
-            del arp_request_memory[arp_request_psrc]
-
-
+# takes arp reply packet to cross-check request packet with memory, returns True if matching request packet is found/reply is valid
 def arp_reply(packet):
     reply_psrc = packet.getlayer(scp.ARP).psrc
 
@@ -604,10 +559,10 @@ def arp_reply(packet):
 
     is_valid_reply = False
 
+    # cross-checking with request packet in memory
     for request_psrc in arp_request_memory:
         if not request_psrc == reply_pdst:
             continue
-        # FIXME: it sees mac address as incorrect ip bcus spoofed
 
         for i, request_pdst in enumerate(
             arp_request_memory[request_psrc]["request_to"]
@@ -619,14 +574,19 @@ def arp_reply(packet):
                 continue
 
             is_valid_reply = True
+
             del arp_request_memory[request_psrc]["request_to"][i]
             del arp_request_memory[request_psrc]["src_mac"][i]
+
+            if len(arp_request_memory[request_psrc]["request_to"]) == 0:
+                del arp_request_memory[request_psrc]
+
             break
 
-    # print(arp_request_memory, "\n...........")
     return is_valid_reply
 
 
+# updates arp table with ip and mac_address, returns True if there were any changes, False if the information remained the same
 def update_arp_table(ip, mac_address):
 
     arp_table_is_modified = False
@@ -640,16 +600,18 @@ def update_arp_table(ip, mac_address):
 
     arp_table[ip] = mac_address
 
+    # save arp table to local
     write_arp_table()
 
     return arp_table_is_modified
 
 
+# checking whether an ip and mac address matches information inside arp table, returns False if it doesnt match
 def check_arp_table(ip, mac_address):
 
-    check_invalid_reply = False
-    # False means its a spoofed packet
-    # True means its a safe invalid packet
+    matches_arp_table = False
+    # False means the ip and mac address doesnt match the arp table (its a spoofed packet)
+    # True means the ip and mac address matches the arp table (its a safe invalid packet)
 
     for arp_ip in arp_table:
 
@@ -657,9 +619,23 @@ def check_arp_table(ip, mac_address):
             continue
 
         if arp_table[arp_ip] == mac_address:
-            check_invalid_reply = True
+            matches_arp_table = True
 
-    return check_invalid_reply
+    return matches_arp_table
+
+
+# logs an arp spoof warning
+def arp_spoof_logger(packet):
+    attacker = packet.src
+    target = packet.dst
+
+    if verbose >= 0:
+        logging(
+            "WARNING: Spoofed ARP packet detected by "
+            + attacker
+            + " targeting "
+            + target
+        )
 
 
 # TODO: test if database would update to the spoof arp if ran long enough
