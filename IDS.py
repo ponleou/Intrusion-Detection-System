@@ -21,6 +21,12 @@ udp_info_time_reset = 30  # seconds, to reset the collected udp packets informat
 ps_time_check = 30  # seconds, change only if you know what you are doing
 syn_timeout = 2  # seconds, change only if you know what you are doing
 
+"""
+GLOBAL FUNCTIONS
+"""
+
+warning_file = "ids_warning.txt"
+
 
 def logging(msg, file_name="ids_logs.txt"):
     with open(file_name, "a") as f:
@@ -30,13 +36,29 @@ def logging(msg, file_name="ids_logs.txt"):
 def syn_filter(packet):
     is_syn_flag = False
 
+    if not tcp_filter(packet):
+        return is_syn_flag
+
     try:
-        if packet.getlayer(scp.TCP).flags == "S":
+        packet_flag = packet.getlayer(scp.TCP).flags
+        if packet_flag == "S":
             is_syn_flag = True
-    except:
-        pass
+    except Exception as e:
+        logging("WARNING: TCP packet without flags; " + e, warning_file)
 
     return is_syn_flag
+
+
+def tcp_filter(packet):
+    is_tcp_protocol = False
+
+    try:
+        if packet.haslayer(scp.TCP):
+            is_tcp_protocol = True
+    except Exception as e:
+        logging("WARNING: Packet without TCP layer; " + e, warning_file)
+
+    return is_tcp_protocol
 
 
 def udp_filter(packet):
@@ -45,10 +67,22 @@ def udp_filter(packet):
     try:
         if packet.haslayer(scp.UDP):
             is_udp_protocol = True
-    except:
-        pass
+    except Exception as e:
+        logging("WARNING: Packet without UDP layer; " + e, warning_file)
 
     return is_udp_protocol
+
+
+def arp_filter(packet):
+    is_arp_packet = False
+
+    try:
+        if packet.haslayer(scp.ARP):
+            is_arp_packet = True
+    except Exception as e:
+        logging("WARNING: Packet without ARP layer; " + e, warning_file)
+
+    return is_arp_packet
 
 
 def unique_port_organizer(
@@ -57,20 +91,17 @@ def unique_port_organizer(
     # src_or_dst_port can be changed to include or remove source port or destination port
     # src_or_dst_ip can be changed to include or remove source ip or destination ip (stays in the name of each array: interaction_name)
     packet_src = packet.src
+    packet_dst = packet.dst
 
     # some UDP packets dont have IP layer
     try:
         if src_or_dst_ip[0]:
             packet_src += "(" + packet.getlayer(scp.IP).src + ")"
-    except:
-        pass
 
-    packet_dst = packet.dst
-    try:
         if src_or_dst_ip[1]:
             packet_dst += "(" + packet.getlayer(scp.IP).dst + ")"
-    except:
-        pass
+    except Exception as e:
+        logging("WARNING: UDP packet without IP layer; " + e, warning_file)
 
     interaction_name = packet_src + ", " + packet_dst
 
@@ -92,7 +123,9 @@ def unique_port_organizer(
             dictionary[interaction_name][1].append(packet.dport)
 
 
-# SYN FLOOD DETECTOR
+"""
+SYN FLOOD DETECTOR
+"""
 interaction_missing_packets = {}
 
 
@@ -134,16 +167,25 @@ def find_ack_pkt_thread(seq_num, src_ip, dst_ip, src_mac_ad, dst_mac_ad, packet_
 
 
 # checking if that packet is the acknowledgement to the syn packet
+def get_ack_from_tcp(packet):
+    packet_ack_number = -1  # there's no ack number with -1, so this is always incorrect
+
+    try:
+        packet_ack_number = packet.getlayer(scp.TCP).ack
+    except Exception as e:
+        logging("WARNING: TCP packet without ack number; " + e, warning_file)
+
+    return packet_ack_number
+
+
 def check_ack_number(packet, seq_number):
 
     correct_ack_number = seq_number + 1
-    try:
-        packet_ack_number = packet.getlayer(scp.TCP).ack
 
-        if packet_ack_number == correct_ack_number:
-            pkt_flag_processor(packet)
-    except:
-        pass
+    packet_ack_number = get_ack_from_tcp(packet)
+
+    if packet_ack_number == correct_ack_number:
+        pkt_flag_processor(packet)
 
 
 # TEMPORARY: can remove after adding flag filters to sniff
@@ -154,13 +196,11 @@ def check_missing_packet(sniffed_packets, seq_number):
     # if there has been an ack packet for a syn packet, this loop will return false
     # if the packet is missing, it will return true
     for packet in sniffed_packets:
-        try:
-            packet_ack_number = packet.getlayer(scp.TCP).ack
 
-            if packet_ack_number == correct_ack_number:
-                return False
-        except:
-            pass
+        packet_ack_number = get_ack_from_tcp(packet)
+
+        if packet_ack_number == correct_ack_number:
+            return False
 
     return True
 
@@ -245,7 +285,9 @@ synflood_detector_thread = threading.Thread(
 )
 
 
-# PORTSCAN DETECTOR
+"""
+PORT SCAN DETECTOR
+"""
 # dictionary for holding unique devices and the ports they are accessing (used for port scan)
 unique_interaction_accessing_port = {}
 
@@ -303,7 +345,9 @@ def port_scan_detector():
 port_scan_detector_thread = threading.Thread(target=port_scan_detector)
 
 
-# UDP flood detector
+"""
+UDP FLOOD DETECTOR
+"""
 udpflood_record_reset_counter = 0
 udp_pkts_info = {}
 
