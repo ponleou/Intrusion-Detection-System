@@ -36,7 +36,7 @@ def logging(msg, file_name="ids_logs.txt"):
 def syn_filter(packet):
     is_syn_flag = False
 
-    if not tcp_filter(packet):
+    if not packet.haslayer(scp.TCP):
         return is_syn_flag
 
     try:
@@ -49,40 +49,18 @@ def syn_filter(packet):
     return is_syn_flag
 
 
-def tcp_filter(packet):
-    is_tcp_protocol = False
+def get_ack_from_tcp(packet):
+    packet_ack_number = None
+
+    if not packet.haslayer(scp.TCP):
+        return packet_ack_number
 
     try:
-        if packet.haslayer(scp.TCP):
-            is_tcp_protocol = True
+        packet_ack_number = packet.getlayer(scp.TCP).ack
     except Exception as e:
-        logging("WARNING: Packet without TCP layer; " + e, warning_file)
+        logging("WARNING: TCP packet without ack number; " + e, warning_file)
 
-    return is_tcp_protocol
-
-
-def udp_filter(packet):
-    is_udp_protocol = False
-
-    try:
-        if packet.haslayer(scp.UDP):
-            is_udp_protocol = True
-    except Exception as e:
-        logging("WARNING: Packet without UDP layer; " + e, warning_file)
-
-    return is_udp_protocol
-
-
-def arp_filter(packet):
-    is_arp_packet = False
-
-    try:
-        if packet.haslayer(scp.ARP):
-            is_arp_packet = True
-    except Exception as e:
-        logging("WARNING: Packet without ARP layer; " + e, warning_file)
-
-    return is_arp_packet
+    return packet_ack_number
 
 
 def unique_port_organizer(
@@ -132,9 +110,7 @@ interaction_missing_packets = {}
 # function to run find_pkt_thread function in another thread
 def syn_detector_threader(packet):
 
-    is_syn_flag = syn_filter(packet)
-
-    if not is_syn_flag:
+    if not syn_filter(packet):
         return
 
     src_ip = packet.getlayer(scp.IP).src
@@ -167,17 +143,6 @@ def find_ack_pkt_thread(seq_num, src_ip, dst_ip, src_mac_ad, dst_mac_ad, packet_
 
 
 # checking if that packet is the acknowledgement to the syn packet
-def get_ack_from_tcp(packet):
-    packet_ack_number = -1  # there's no ack number with -1, so this is always incorrect
-
-    try:
-        packet_ack_number = packet.getlayer(scp.TCP).ack
-    except Exception as e:
-        logging("WARNING: TCP packet without ack number; " + e, warning_file)
-
-    return packet_ack_number
-
-
 def check_ack_number(packet, seq_number):
 
     correct_ack_number = seq_number + 1
@@ -298,10 +263,7 @@ def reset_unique_port():
 
 
 def port_scan_processor(packet):
-
-    is_syn_flag = syn_filter(packet)
-
-    if not is_syn_flag:
+    if not syn_filter(packet):
         return
 
     unique_port_organizer(
@@ -355,9 +317,7 @@ udp_pkts_info = {}
 # function to send packet variable to other functions
 def udp_flood_processor(packet):
 
-    is_udp = udp_filter(packet)
-
-    if not is_udp:
+    if not packet.haslayer(scp.UDP):
         return
 
     # creating a dictionary on udp_pkt_info to include unique ports
@@ -483,6 +443,32 @@ def udpflood_detector_threader(udpflood_record_reset_counter):
 udpflood_detector_thread = threading.Thread(
     target=udpflood_detector_threader, args=(udpflood_record_reset_counter,)
 )
+
+"""
+ARP SPOOFING DETECTOR
+"""
+
+
+def get_arp_operation(packet):
+    pass
+
+
+def arp_spoof_processor(packet):
+
+    if not packet.haslayer(scp.ARP):
+        return
+
+    arp_op = None
+
+    try:
+        arp_op = packet.getlayer(scp.ARP).op
+    except:
+        pass
+
+    # if arp_op == 1:
+    #     pass
+
+    # if arp_op == 2
 
 
 # sending pckets to the correct detector
