@@ -18,7 +18,7 @@ def port_scan(source_ip, target_ip, start_port, end_port):
 
         packet = ip_layer / scp.TCP(dport=port, flags="S")
         packets.append(packet)
-    scp.send(packets)
+    scp.send(packets, verbose=False)
 
 
 port_scan(source_ip, target_ip, start_port, end_port)
