@@ -224,8 +224,7 @@ def log_success_handshake(packet):
 
 
 def reset_interaction_missing_packets():
-    global interaction_missing_packets
-    interaction_missing_packets = {}
+    interaction_missing_packets.clear()
 
 
 # SYN flood detector logger
@@ -275,8 +274,7 @@ unique_interaction_accessing_port = {}
 
 
 def reset_unique_port():
-    global unique_interaction_accessing_port
-    unique_interaction_accessing_port = {}
+    unique_interaction_accessing_port.clear()
 
 
 def port_scan_processor(packet):
@@ -400,11 +398,9 @@ interaction_icmp_pkt_count = {}
 
 # to reset the recorded UDP packet information
 def udpflood_record_reset():
-    global udp_pkts_info
-    udp_pkts_info = {}
+    udp_pkts_info.clear()
 
-    global interaction_icmp_pkt_count
-    interaction_icmp_pkt_count = {}
+    interaction_icmp_pkt_count.clear()
 
     global udpflood_record_reset_counter
     udpflood_record_reset_counter = 0
