@@ -17,6 +17,7 @@ verbose = 1  # log levels, from 0 to 3 (-1 for no logs)
 
 
 # Users can adjust with caution (affects the effectiveness of the detection)
+max_arp_request_in_memory = 3  # max number of arp request packets stored in memory
 udp_info_time_reset = 30  # seconds, to reset the collected udp packets information
 ps_time_check = 30  # seconds, change only if you know what you are doing
 syn_timeout = 2  # seconds, change only if you know what you are doing
@@ -470,7 +471,6 @@ ARP SPOOFING DETECTOR
 """
 
 arp_request_memory = {}
-# TODO: clear memory after a timeout
 arp_table = {}
 # TODO: take arp table from file
 # TODO: configure own local arp table
@@ -526,6 +526,25 @@ def arp_spoof_processor(packet):
             if not not_spoof_packet:
                 arp_spoof_logger(packet)
 
+    # clearing arp requests in memory when it reaches maximum memory
+    arp_request_in_memory = 0
+    arp_request_src_in_memory = 0
+
+    for arp_request in arp_request_memory:
+        arp_request_in_memory += len(
+            arp_request_memory[arp_request][
+                next(iter(arp_request_memory[arp_request].keys()))
+            ]
+        )
+
+    arp_request_src_in_memory += len(arp_request_memory)
+
+    if (
+        arp_request_in_memory >= max_arp_request_in_memory
+        or arp_request_src_in_memory >= max_arp_request_in_memory
+    ):
+        arp_request_memory.clear()
+
 
 # stores arp requests packets to memory
 def store_arp_request(packet):
@@ -548,15 +567,6 @@ def arp_reply(packet):
     reply_pdst = packet.getlayer(scp.ARP).pdst
     reply_hwdst = packet.getlayer(scp.ARP).hwdst
 
-    print(
-        arp_request_memory,
-        "\n",
-        reply_pdst,
-        reply_psrc,
-        reply_hwdst,
-        "\n................",
-    )
-
     is_valid_reply = False
 
     # cross-checking with request packet in memory
@@ -577,9 +587,6 @@ def arp_reply(packet):
 
             del arp_request_memory[request_psrc]["request_to"][i]
             del arp_request_memory[request_psrc]["src_mac"][i]
-
-            if len(arp_request_memory[request_psrc]["request_to"]) == 0:
-                del arp_request_memory[request_psrc]
 
             break
 
