@@ -47,7 +47,7 @@ def syn_filter(packet):
         if packet_flag == "S":
             is_syn_flag = True
     except Exception as e:
-        caught_error_logs("TCP packet without flags; " + e)
+        caught_error_logs("TCP packet without flags; " + str(e))
 
     return is_syn_flag
 
@@ -61,7 +61,7 @@ def get_ack_from_tcp(packet):
     try:
         packet_ack_number = packet.getlayer(scp.TCP).ack
     except Exception as e:
-        caught_error_logs("TCP packet without ack number; " + e)
+        caught_error_logs("TCP packet without ack number; " + str(e))
 
     return packet_ack_number
 
@@ -75,7 +75,7 @@ def get_arp_operation(packet):
     try:
         arp_op = packet.getlayer(scp.ARP).op
     except Exception as e:
-        caught_error_logs("ARP packet without operation value: " + e)
+        caught_error_logs("ARP packet without operation value: " + str(e))
 
     return arp_op
 
@@ -96,7 +96,7 @@ def unique_port_organizer(
         if src_or_dst_ip[1]:
             packet_dst += "(" + packet.getlayer(scp.IP).dst + ")"
     except Exception as e:
-        caught_error_logs("UDP packet without IP layer; " + e)
+        caught_error_logs("UDP packet without IP layer; " + str(e))
 
     interaction_name = packet_src + ", " + packet_dst
 
@@ -466,14 +466,12 @@ ARP SPOOFING DETECTOR
 """
 
 arp_table = {}
+# TODO: take arp table from file
 
 
 def write_arp_table(file_name="arp_table.txt"):
     with open(file_name, "w") as f:
         f.write(str(arp_table))
-
-
-# TODO: output arp table onto a separate file
 
 
 def arp_spoof_processor(packet):
@@ -651,6 +649,8 @@ def processor(packet):
     # passing to udp flood detector and icmp listener
     udp_flood_processor(packet)
     icmp_pkt_listener(packet)
+    # add arp spoofing detection
+    arp_spoof_processor(packet)
 
 
 if __name__ == "__main__":
