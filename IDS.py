@@ -25,12 +25,14 @@ syn_timeout = 2  # seconds, change only if you know what you are doing
 GLOBAL FUNCTIONS
 """
 
-warning_file = "ids_warning.txt"
-
 
 def logging(msg, file_name="ids_logs.txt"):
     with open(file_name, "a") as f:
         f.write(str(datetime.now()) + ": " + msg + "\n")
+
+
+def caught_error_logs(msg, file_name="ids_caught_errors.txt"):
+    logging("ERROR: " + msg, file_name)
 
 
 def syn_filter(packet):
@@ -44,7 +46,7 @@ def syn_filter(packet):
         if packet_flag == "S":
             is_syn_flag = True
     except Exception as e:
-        logging("WARNING: TCP packet without flags; " + e, warning_file)
+        caught_error_logs("TCP packet without flags; " + e)
 
     return is_syn_flag
 
@@ -58,9 +60,23 @@ def get_ack_from_tcp(packet):
     try:
         packet_ack_number = packet.getlayer(scp.TCP).ack
     except Exception as e:
-        logging("WARNING: TCP packet without ack number; " + e, warning_file)
+        caught_error_logs("TCP packet without ack number; " + e)
 
     return packet_ack_number
+
+
+def get_arp_operation(packet):
+    arp_op = None
+
+    if not packet.haslayer(scp.ARP):
+        return arp_op
+
+    try:
+        arp_op = packet.getlayer(scp.ARP).op
+    except Exception as e:
+        caught_error_logs("ARP packet without operation value: " + e)
+
+    return arp_op
 
 
 def unique_port_organizer(
@@ -79,7 +95,7 @@ def unique_port_organizer(
         if src_or_dst_ip[1]:
             packet_dst += "(" + packet.getlayer(scp.IP).dst + ")"
     except Exception as e:
-        logging("WARNING: UDP packet without IP layer; " + e, warning_file)
+        caught_error_logs("UDP packet without IP layer; " + e)
 
     interaction_name = packet_src + ", " + packet_dst
 
@@ -449,26 +465,26 @@ ARP SPOOFING DETECTOR
 """
 
 
-def get_arp_operation(packet):
-    pass
-
-
 def arp_spoof_processor(packet):
 
     if not packet.haslayer(scp.ARP):
         return
 
-    arp_op = None
+    arp_op = get_arp_operation(packet)
 
-    try:
-        arp_op = packet.getlayer(scp.ARP).op
-    except:
-        pass
+    if arp_op == 1:
+        arp_request()
 
-    # if arp_op == 1:
-    #     pass
+    if arp_op == 2:
+        arp_reply()
 
-    # if arp_op == 2
+
+def arp_request():
+    pass
+
+
+def arp_reply():
+    pass
 
 
 # sending pckets to the correct detector
