@@ -483,12 +483,15 @@ def arp_spoof_processor(packet):
 
         if is_valid_reply:
 
-            update_arp_table(
-                packet.getlayer(scp.ARP).psrc, packet.getlayer(scp.ARP).hwsrc
-            )
+            ip = packet.getlayer(scp.ARP).psrc
+            mac_address = packet.getlayer(scp.ARP).hwsrc
+            is_modified = update_arp_table(ip, mac_address)
+
+            if is_modified:
+                logging("ARP table has been modified, " + ip + " is at " + mac_address)
         else:
             not_spoof_packet = check_arp_table
-            
+
             if not not_spoof_packet:
                 arp_spoof_logger(packet)
 
@@ -556,15 +559,17 @@ def arp_reply(packet):
 
 def update_arp_table(ip, mac_address):
 
+    arp_table_is_modified = False
+
     if ip in arp_table:
 
         if arp_table[ip] == mac_address:
-            return
+            return arp_table_is_modified
 
-        # TODO: log that arp table has been changed/modified (not added)
-        pass
+        arp_table_is_modified = True
 
     arp_table[ip] = mac_address
+    return arp_table_is_modified
 
 
 def check_arp_table(ip, mac_address):
