@@ -673,9 +673,6 @@ def arp_spoof_logger(packet):
         )
 
 
-# TODO: test if database would update to the spoof arp if ran long enough
-
-
 # sending pckets to the correct detector
 def processor(packet):
     # passing to syn flood detector
