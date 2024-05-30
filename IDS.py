@@ -277,7 +277,7 @@ def log_success_handshake(packet):
 # for logging a synflood
 def log_synflood(src, dst):
     if verbose >= 0:
-        logging("WARNING SYN flood detected by " + src + " targeting " + dst)
+        logging("WARNING: SYN flood detected by " + src + " targeting " + dst)
 
 
 """
