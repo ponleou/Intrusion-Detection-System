@@ -12,7 +12,7 @@ ps_threshold = 40  # minimum amount of unique accessed ports to alert port scan 
 udp_time_check = 5  # seconds for each UDP flood check (lower time means less sensitive)
 udp_threshold = 100  # minimum amount of ICMP packets in response to UDP packets in the peroid of udp_time_check to alert UDP flood (higher means less sensitive)
 
-verbose = 1  # log levels, from 0 to 3 (-1 for no logs)
+verbose = 0  # log levels, from 0 to 3 (-1 for no logs)
 
 
 # Users can adjust with caution (affects the effectiveness of the detection)
@@ -110,12 +110,12 @@ def unique_port_organizer(
         dictionary[interaction_name] = {"s_port": [], "d_port": []}
 
     if src_or_dst_port[0]:
-        if packet.sport not in dictionary[interaction_name][0]:
-            dictionary[interaction_name][0].append(packet.sport)
+        if packet.sport not in dictionary[interaction_name]["s_port"]:
+            dictionary[interaction_name]["s_port"].append(packet.sport)
 
     if src_or_dst_port[1]:
-        if packet.dport not in dictionary[interaction_name][1]:
-            dictionary[interaction_name][1].append(packet.dport)
+        if packet.dport not in dictionary[interaction_name]["d_port"]:
+            dictionary[interaction_name]["d_port"].append(packet.dport)
 
 
 """
@@ -191,7 +191,7 @@ def reset_syn_memory_timer():
             time.sleep(reset_syn_memory_time)
             force_reset_syn_memory()
     except KeyboardInterrupt as e:
-        print(str(e) + ": Stopping reset_syn_memory_timer loop")
+        print(str(e) + ": Stopping reset_syn_memory_timer loop...")
 
 
 reset_syn_memory_timer_thread = threading.Thread(target=reset_syn_memory_timer)
@@ -297,42 +297,45 @@ def port_scan_processor(packet):
 
 
 def port_scan_detector():
-    while True:
-        time.sleep(ps_time_check)
+    try:
+        while True:
+            time.sleep(ps_time_check)
 
-        for interaction_name in unique_interaction_accessing_port:
+            for interaction_name in unique_interaction_accessing_port:
 
-            mac_ad = interaction_name.split(", ")
-            if verbose >= 1:
-                logging(
-                    mac_ad[0]
-                    + " accessed "
-                    + str(
-                        len(
-                            unique_interaction_accessing_port[interaction_name][
-                                "s_port"
-                            ]
-                        )
-                    )
-                    + " ports of "
-                    + mac_ad[1]
-                    + "'s connection",
-                )
-
-            if (
-                len(unique_interaction_accessing_port[interaction_name]["s_port"])
-                >= ps_threshold
-            ):
-                # TODO: test if port scan detection is still working
-                if verbose >= 0:
+                mac_ad = interaction_name.split(", ")
+                if verbose >= 1:
                     logging(
-                        "WARNING: Portscan detected by "
-                        + mac_ad[0]
-                        + " targeting "
-                        + mac_ad[1],
+                        mac_ad[0]
+                        + " accessed "
+                        + str(
+                            len(
+                                unique_interaction_accessing_port[interaction_name][
+                                    "s_port"
+                                ]
+                            )
+                        )
+                        + " ports of "
+                        + mac_ad[1]
+                        + "'s connection with TCP SYN packets",
                     )
 
-        reset_unique_port()
+                if (
+                    len(unique_interaction_accessing_port[interaction_name]["s_port"])
+                    >= ps_threshold
+                ):
+
+                    if verbose >= 0:
+                        logging(
+                            "WARNING: Portscan detected by "
+                            + mac_ad[0]
+                            + " targeting "
+                            + mac_ad[1],
+                        )
+
+            reset_unique_port()
+    except KeyboardInterrupt as e:
+        print(str(e) + ": Stopping port_scan_detector loop...")
 
 
 port_scan_detector_thread = threading.Thread(target=port_scan_detector)
@@ -343,7 +346,6 @@ UDP FLOOD DETECTOR
 """
 udp_pkts_info_memory = {}
 interaction_icmp_pkt_count = {}
-# TODO: print and analyze the two dictionaries to make sure the reset properly
 
 
 # function to send packet variable to other functions
@@ -356,6 +358,7 @@ def udp_flood_processor(packet):
         # [True, False] to record the source IP address (written inside the key's name)
 
     if packet.haslayer(scp.ICMP):
+
         if packet.getlayer(scp.ICMP).type == 3 and packet.getlayer(scp.ICMP).code == 3:
 
             icmp_matches, interaction_name = check_icmp_with_udp_memory(packet)
@@ -389,8 +392,12 @@ def check_icmp_with_udp_memory(packet):
         if not packet.src == dst_mac_ad:
             continue
 
-        if not packet.getlayer(scp.IP).dst == src_ip:
-            continue
+        # some icmp packets (icmpv6) dont have ip layer
+        try:
+            if not packet.getlayer(scp.IP).dst == src_ip:
+                continue
+        except Exception as e:
+            caught_error_logs("ICMP packet without IP layer; " + str(e))
 
         # checking whether the UDP and ICMP response packet have the same source and destination ports
         for i, sport in enumerate(udp_pkts_info_memory[interaction_name]["s_port"]):
@@ -429,60 +436,63 @@ def force_reset_udp_pkts_info_memory():
 
 
 # detector for UDP flood
-def udpflood_detector_threader():
+def udpflood_detector():
 
     no_udpflood_detected_counter = 0
     # counts the number of times udpflood is not detected after every udp_time_check
     # if it exceeds a certain amount, it will reset the udp_pkts_info_memory and interaction_icmp_pkt_count
+    try:
+        while True:
+            time.sleep(udp_time_check)
 
-    while True:
-        time.sleep(udp_time_check)
+            reset_udp_pkts_info_memory = False
 
-        reset_udp_pkts_info_memory = False
+            for interaction_name in interaction_icmp_pkt_count:
+                mac_ad = interaction_name.split(", ")
 
-        for interaction_name in interaction_icmp_pkt_count:
-            mac_ad = interaction_name.split(", ")
+                if verbose >= 1:
 
-            if verbose >= 1:
-
-                logging(
-                    str(interaction_icmp_pkt_count[interaction_name])
-                    + " ICMP Destination unreachable (port unreachable) packets sent from "
-                    + mac_ad[1]
-                    + " to "
-                    + mac_ad[0]
-                )
-
-            if interaction_icmp_pkt_count[interaction_name] >= udp_threshold:
-
-                if verbose >= 0:
                     logging(
-                        "WARNING: UDP flood detected by "
-                        + mac_ad[0]
-                        + " targeting "
+                        str(interaction_icmp_pkt_count[interaction_name])
+                        + " ICMP Destination unreachable (port unreachable) packets sent from "
                         + mac_ad[1]
+                        + " to "
+                        + mac_ad[0]
                     )
 
-                # when a udp flood is detected, it will queue a udp_pkts_info_memory reset
-                reset_udp_pkts_info_memory = True
+                if interaction_icmp_pkt_count[interaction_name] >= udp_threshold:
 
-                # continue so that no_udpflood_detected_counter (the line below) wont get counted
-                continue
+                    if verbose >= 0:
+                        logging(
+                            "WARNING: UDP flood detected by "
+                            + mac_ad[0]
+                            + " targeting "
+                            + mac_ad[1]
+                        )
+
+                    # when a udp flood is detected, it will queue a udp_pkts_info_memory reset
+                    reset_udp_pkts_info_memory = True
 
             # runs if no udpflood is detected
             no_udpflood_detected_counter += 1
 
-        # the max value for no_udpflood_detected_counter to initiate a force_reset_udp_pkts_info_memory
-        # calculation makes it so that force_reset_udp_pkts_info_memory happens every reset_udp_memory_time
-        max_counter = reset_udp_memory_time / udp_time_check
+            # the max value for no_udpflood_detected_counter to initiate a force_reset_udp_pkts_info_memory
+            # calculation makes it so that force_reset_udp_pkts_info_memory happens every reset_udp_memory_time
+            max_counter = reset_udp_memory_time / udp_time_check
 
-        if reset_udp_pkts_info_memory or no_udpflood_detected_counter >= max_counter:
+            if (
+                reset_udp_pkts_info_memory
+                or no_udpflood_detected_counter >= max_counter
+            ):
+                no_udpflood_detected_counter = 0
+                force_reset_udp_pkts_info_memory()
 
-            no_udpflood_detected_counter = 0
-            force_reset_udp_pkts_info_memory()
+            interaction_icmp_pkt_count.clear()
+    except KeyboardInterrupt as e:
+        print(str(e) + ": Stopping udpflood_detector loop...")
 
 
-udpflood_detector_thread = threading.Thread(target=udpflood_detector_threader)
+udpflood_detector_thread = threading.Thread(target=udpflood_detector)
 
 """
 ARP SPOOFING DETECTOR
@@ -674,7 +684,6 @@ def processor(packet):
     port_scan_processor(packet)
     # passing to udp flood detector and icmp listener
     udp_flood_processor(packet)
-    check_icmp_with_udp_memory(packet)
     # add arp spoofing detection
     arp_spoof_processor(packet)
 
