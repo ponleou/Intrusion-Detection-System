@@ -132,9 +132,6 @@ def synflood_processor(packet):
         update_interaction_syn_memory(packet)
 
     if tcp_flag_filter(packet, "SA"):
-        print("SA found", check_ack_number(packet))
-        print(interaction_syn_memory)
-        print(packet.show())
 
         if check_ack_number(packet):
             update_interaction_syn_memory(packet)
@@ -144,7 +141,6 @@ def synflood_processor(packet):
             pass
 
     if tcp_flag_filter(packet, "A"):
-        # print("A found", check_ack_number(packet))
         if check_ack_number(packet):
             log_success_handshake(packet)
     # thread = threading.Thread(
@@ -200,13 +196,13 @@ def check_ack_number(packet):
 
     src_ip = packet.getlayer(scp.IP).src
     dst_ip = packet.getlayer(scp.IP).dst
-    packet_ack = packet.getlayer(scp.TCP).seq
+    packet_ack = packet.getlayer(scp.TCP).ack
     src_mac_ad = packet.src
     dst_mac_ad = packet.dst
 
     matching_seq = packet_ack - 1
 
-    interaction_name = src_mac_ad + ", " + dst_mac_ad
+    interaction_name = dst_mac_ad + ", " + src_mac_ad
 
     for syn_interaction_name in interaction_syn_memory:
 
@@ -231,6 +227,8 @@ def check_ack_number(packet):
             del interaction_syn_memory[syn_interaction_name]["dst_ip"][i]
 
             is_valid_ack = True
+
+            break
 
     return is_valid_ack
 
