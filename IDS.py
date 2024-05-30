@@ -5,7 +5,6 @@ import time
 
 
 # Users can adjust these values
-syn_time_check = 2  # seconds for each SYN flood check (lower time means less sensitive)
 syn_threshold = 100  # minimum amount of missing packets in the period of syn_time_check to alert detection of SYN flood (Higher means less sensitive)
 
 ps_threshold = 40  # minimum amount of unique accessed ports to alert port scan (higher means less sentitive)
@@ -17,10 +16,10 @@ verbose = 1  # log levels, from 0 to 3 (-1 for no logs)
 
 
 # Users can adjust with caution (affects the effectiveness of the detection)
+reset_syn_memory_time = 30  # seconds, to reset the syn packet information in memory
 max_arp_request_in_memory = 3  # max number of arp request packets stored in memory
 udp_info_time_reset = 30  # seconds, to reset the collected udp packets information
 ps_time_check = 30  # seconds, change only if you know what you are doing
-syn_timeout = 2  # seconds, change only if you know what you are doing
 
 """
 GLOBAL FUNCTIONS
@@ -121,6 +120,7 @@ def unique_port_organizer(
 """
 SYN FLOOD DETECTOR
 """
+reset_syn_memory = False
 interaction_missing_packets = {}
 interaction_syn_memory = {}
 
@@ -136,18 +136,18 @@ def synflood_processor(packet):
         if check_ack_number(packet):
             update_interaction_syn_memory(packet)
 
-        else:
-            # TODO: log sth to mention that ack packet doesnt match with anything
-            pass
-
     if tcp_flag_filter(packet, "A"):
+
         if check_ack_number(packet):
             log_success_handshake(packet)
-    # thread = threading.Thread(
-    #     target=find_ack_pkt_thread,
-    #     args=(packet_seq, src_ip, dst_ip, src_mac_ad, dst_mac_ad, packet_flag),
-    # )
-    # thread.start()
+
+    # checking and logging for synflood attack
+    synflood_detected, synflood_src, synflood_dst = synflood_detector()
+    if synflood_detected:
+        log_synflood(synflood_src, synflood_dst)
+        force_reset_syn_memory()
+
+    reset_syn_memory_process()
 
 
 def update_interaction_syn_memory(packet):
@@ -155,7 +155,6 @@ def update_interaction_syn_memory(packet):
     src_ip = packet.getlayer(scp.IP).src
     dst_ip = packet.getlayer(scp.IP).dst
     packet_seq = packet.getlayer(scp.TCP).seq
-    # packet_flag = str(packet.getlayer(scp.TCP).flags)
     src_mac_ad = packet.src
     dst_mac_ad = packet.dst
 
@@ -168,26 +167,35 @@ def update_interaction_syn_memory(packet):
             "seq_num": [],
         }
 
-    if packet_seq not in interaction_syn_memory[interaction_name]["seq_num"]:
-        interaction_syn_memory[interaction_name]["seq_num"].append(packet_seq)
-        interaction_syn_memory[interaction_name]["src_ip"].append(src_ip)
-        interaction_syn_memory[interaction_name]["dst_ip"].append(dst_ip)
+    # if packet_seq not in interaction_syn_memory[interaction_name]["seq_num"]:
+    interaction_syn_memory[interaction_name]["seq_num"].append(packet_seq)
+    interaction_syn_memory[interaction_name]["src_ip"].append(src_ip)
+    interaction_syn_memory[interaction_name]["dst_ip"].append(dst_ip)
 
 
-# function to find the correct acknowledgement number packet, will be ran in a seperate thread
-def find_ack_pkt_thread(seq_num, src_ip, dst_ip, src_mac_ad, dst_mac_ad, packet_flag):
-    pass
+def reset_syn_memory_process():
+    global reset_syn_memory
 
-    # packets = scp.sniff(
-    #     filter="tcp and src host " + dst_ip + " and dst host " + src_ip,
-    #     prn=lambda x: check_ack_number(x, seq_num),
-    #     timeout=syn_timeout,
-    # )  # dst_ip is put for src_ip, and src_ip is put for dst_ip
+    if reset_syn_memory:
+        interaction_syn_memory.clear()
+        reset_syn_memory = False
 
-    # double checking and handling missing acknowledgement packet
-    # packet_missing = check_missing_packet(packets, seq_num)
-    # if packet_missing:
-    #     log_missing_packet(packet_flag, src_mac_ad, dst_mac_ad)
+
+def reset_syn_memory_timer():
+    try:
+        while True:
+            time.sleep(reset_syn_memory_time)
+            force_reset_syn_memory()
+    except KeyboardInterrupt as e:
+        print(str(e) + ": Stopping reset_syn_memory_timer loop")
+
+
+reset_syn_memory_timer_thread = threading.Thread(target=reset_syn_memory_timer)
+
+
+def force_reset_syn_memory():
+    global reset_syn_memory
+    reset_syn_memory = True
 
 
 # checking if that packet is the acknowledgement to the syn packet
@@ -232,53 +240,15 @@ def check_ack_number(packet):
 
     return is_valid_ack
 
-    # if packet_ack_number == correct_ack_number:
-    #     pkt_flag_processor(packet)
 
+def synflood_detector():
+    synflood_detected = False, "", ""
 
-# TEMPORARY: can remove after adding flag filters to sniff
-def check_missing_packet(sniffed_packets, seq_number):
-
-    correct_ack_number = seq_number + 1
-
-    # if there has been an ack packet for a syn packet, this loop will return false
-    # if the packet is missing, it will return true
-    for packet in sniffed_packets:
-
-        packet_ack_number = get_ack_from_tcp(packet)
-
-        if packet_ack_number == correct_ack_number:
-            return False
-
-    return True
-
-
-# def pkt_flag_processor(packet):
-#     if packet.getlayer(scp.TCP).flags == "SA":
-#         synflood_processor(packet)
-
-#     if packet.getlayer(scp.TCP).flags == "A":
-#         log_success_handshake(packet)
-
-
-# for logging missing packet, and adding to number of missing packet
-def log_missing_packet(packet_flag, src_ip, dst_ip):
-    if verbose >= 3:
-        logging(
-            "No acknowledgement to "
-            + packet_flag
-            + " packet found after timeout between "
-            + src_ip
-            + " and "
-            + dst_ip,
-        )
-
-    interaction_name = src_ip + " and " + dst_ip
-
-    if interaction_name not in interaction_missing_packets:
-        interaction_missing_packets[interaction_name] = 0
-
-    interaction_missing_packets[interaction_name] += 1
+    for interaction_name in interaction_syn_memory:
+        if len(interaction_syn_memory[interaction_name]["seq_num"]) >= syn_threshold:
+            src_and_dst = interaction_name.split(", ")
+            synflood_detected = True, src_and_dst[0], src_and_dst[1]
+    return synflood_detected
 
 
 # for logging a successful tcp handshake
@@ -289,47 +259,9 @@ def log_success_handshake(packet):
         )
 
 
-def reset_interaction_missing_packets():
-    interaction_missing_packets.clear()
-
-
-# SYN flood detector logger
-def missing_packet_flood_detector(time_check, threshold):
-
-    while True:
-        time.sleep(time_check)
-
-        if verbose >= 2:
-            missing_packets = 0
-
-            for interaction in interaction_missing_packets:
-                missing_packets += interaction_missing_packets[interaction]
-
-            logging(
-                str(missing_packets)
-                + " missing acknowledgement packets within the last "
-                + str(time_check)
-                + " seconds",
-            )
-
-        if verbose >= 0:
-            for interaction in interaction_missing_packets:
-                if interaction_missing_packets[interaction] >= threshold:
-                    mac_ad = interaction.split(" and ")
-
-                    logging(
-                        "WARNING: SYN flood attack detected by "
-                        + mac_ad[0]
-                        + " targeting "
-                        + mac_ad[1],
-                    )
-
-        reset_interaction_missing_packets()
-
-
-synflood_detector_thread = threading.Thread(
-    target=missing_packet_flood_detector, args=(syn_time_check, syn_threshold)
-)
+def log_synflood(src, dst):
+    if verbose >= 0:
+        logging("WARNING SYN flood detected by " + src + " targeting " + dst)
 
 
 """
@@ -724,7 +656,7 @@ def processor(packet):
 
 
 if __name__ == "__main__":
-    synflood_detector_thread.start()
+    reset_syn_memory_timer_thread.start()
     port_scan_detector_thread.start()
     udpflood_detector_thread.start()
     scp.sniff(prn=processor)
