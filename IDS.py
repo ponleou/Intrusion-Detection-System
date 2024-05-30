@@ -12,7 +12,11 @@ ps_threshold = 40  # minimum amount of unique accessed ports to alert port scan 
 udp_time_check = 5  # seconds for each UDP flood check (lower time means less sensitive)
 udp_threshold = 100  # minimum amount of ICMP packets in response to UDP packets in the peroid of udp_time_check to alert UDP flood (higher means less sensitive)
 
-verbose = 0  # log levels, from 0 to 3 (-1 for no logs)
+verbose = 0  # log levels
+# from 0 to 1
+# -1 for no logs
+# 0 for attack detection logs only (recommended)
+# 1 for other networking logs (for monitoring)
 
 
 # Users can adjust with caution (affects the effectiveness of the detection)
