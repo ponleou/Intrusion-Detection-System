@@ -36,20 +36,20 @@ def caught_error_logs(msg, file_name="ids_caught_errors.txt"):
     logging("ERROR: " + msg, file_name)
 
 
-def syn_filter(packet):
-    is_syn_flag = False
+def tcp_flag_filter(packet, flag):
+    is_correct_flag = False
 
     if not packet.haslayer(scp.TCP):
-        return is_syn_flag
+        return is_correct_flag
 
     try:
         packet_flag = packet.getlayer(scp.TCP).flags
-        if packet_flag == "S":
-            is_syn_flag = True
+        if packet_flag == flag:
+            is_correct_flag = True
     except Exception as e:
         caught_error_logs("TCP packet without flags; " + str(e))
 
-    return is_syn_flag
+    return is_correct_flag
 
 
 def get_ack_from_tcp(packet):
@@ -122,52 +122,120 @@ def unique_port_organizer(
 SYN FLOOD DETECTOR
 """
 interaction_missing_packets = {}
+interaction_syn_memory = {}
 
 
 # function to run find_pkt_thread function in another thread
-def syn_detector_threader(packet):
+def synflood_processor(packet):
 
-    if not syn_filter(packet):
-        return
+    if tcp_flag_filter(packet, "S"):
+        update_interaction_syn_memory(packet)
+
+    if tcp_flag_filter(packet, "SA"):
+        print("SA found", check_ack_number(packet))
+        print(interaction_syn_memory)
+        print(packet.show())
+
+        if check_ack_number(packet):
+            update_interaction_syn_memory(packet)
+
+        else:
+            # TODO: log sth to mention that ack packet doesnt match with anything
+            pass
+
+    if tcp_flag_filter(packet, "A"):
+        # print("A found", check_ack_number(packet))
+        if check_ack_number(packet):
+            log_success_handshake(packet)
+    # thread = threading.Thread(
+    #     target=find_ack_pkt_thread,
+    #     args=(packet_seq, src_ip, dst_ip, src_mac_ad, dst_mac_ad, packet_flag),
+    # )
+    # thread.start()
+
+
+def update_interaction_syn_memory(packet):
 
     src_ip = packet.getlayer(scp.IP).src
     dst_ip = packet.getlayer(scp.IP).dst
     packet_seq = packet.getlayer(scp.TCP).seq
-    packet_flag = str(packet.getlayer(scp.TCP).flags)
+    # packet_flag = str(packet.getlayer(scp.TCP).flags)
     src_mac_ad = packet.src
     dst_mac_ad = packet.dst
 
-    thread = threading.Thread(
-        target=find_ack_pkt_thread,
-        args=(packet_seq, src_ip, dst_ip, src_mac_ad, dst_mac_ad, packet_flag),
-    )
-    thread.start()
+    interaction_name = src_mac_ad + ", " + dst_mac_ad
+
+    if interaction_name not in interaction_syn_memory:
+        interaction_syn_memory[interaction_name] = {
+            "src_ip": [],
+            "dst_ip": [],
+            "seq_num": [],
+        }
+
+    if packet_seq not in interaction_syn_memory[interaction_name]["seq_num"]:
+        interaction_syn_memory[interaction_name]["seq_num"].append(packet_seq)
+        interaction_syn_memory[interaction_name]["src_ip"].append(src_ip)
+        interaction_syn_memory[interaction_name]["dst_ip"].append(dst_ip)
 
 
 # function to find the correct acknowledgement number packet, will be ran in a seperate thread
 def find_ack_pkt_thread(seq_num, src_ip, dst_ip, src_mac_ad, dst_mac_ad, packet_flag):
+    pass
 
-    packets = scp.sniff(
-        filter="tcp and src host " + dst_ip + " and dst host " + src_ip,
-        prn=lambda x: check_ack_number(x, seq_num),
-        timeout=syn_timeout,
-    )  # dst_ip is put for src_ip, and src_ip is put for dst_ip
+    # packets = scp.sniff(
+    #     filter="tcp and src host " + dst_ip + " and dst host " + src_ip,
+    #     prn=lambda x: check_ack_number(x, seq_num),
+    #     timeout=syn_timeout,
+    # )  # dst_ip is put for src_ip, and src_ip is put for dst_ip
 
     # double checking and handling missing acknowledgement packet
-    packet_missing = check_missing_packet(packets, seq_num)
-    if packet_missing:
-        log_missing_packet(packet_flag, src_mac_ad, dst_mac_ad)
+    # packet_missing = check_missing_packet(packets, seq_num)
+    # if packet_missing:
+    #     log_missing_packet(packet_flag, src_mac_ad, dst_mac_ad)
 
 
 # checking if that packet is the acknowledgement to the syn packet
-def check_ack_number(packet, seq_number):
+def check_ack_number(packet):
+    is_valid_ack = False
 
-    correct_ack_number = seq_number + 1
+    src_ip = packet.getlayer(scp.IP).src
+    dst_ip = packet.getlayer(scp.IP).dst
+    packet_ack = packet.getlayer(scp.TCP).seq
+    src_mac_ad = packet.src
+    dst_mac_ad = packet.dst
 
-    packet_ack_number = get_ack_from_tcp(packet)
+    matching_seq = packet_ack - 1
 
-    if packet_ack_number == correct_ack_number:
-        pkt_flag_processor(packet)
+    interaction_name = src_mac_ad + ", " + dst_mac_ad
+
+    for syn_interaction_name in interaction_syn_memory:
+
+        if not interaction_name == syn_interaction_name:
+            continue
+
+        for i, seq_num in enumerate(
+            interaction_syn_memory[syn_interaction_name]["seq_num"]
+        ):
+
+            if not seq_num == matching_seq:
+                continue
+
+            if not interaction_syn_memory[syn_interaction_name]["src_ip"][i] == dst_ip:
+                continue
+
+            if not interaction_syn_memory[syn_interaction_name]["dst_ip"][i] == src_ip:
+                continue
+
+            del interaction_syn_memory[syn_interaction_name]["seq_num"][i]
+            del interaction_syn_memory[syn_interaction_name]["src_ip"][i]
+            del interaction_syn_memory[syn_interaction_name]["dst_ip"][i]
+
+            is_valid_ack = True
+
+    return is_valid_ack
+
+    # if packet_ack_number == correct_ack_number:
+    #     pkt_flag_processor(packet)
 
 
 # TEMPORARY: can remove after adding flag filters to sniff
@@ -187,12 +255,12 @@ def check_missing_packet(sniffed_packets, seq_number):
     return True
 
 
-def pkt_flag_processor(packet):
-    if packet.getlayer(scp.TCP).flags == "SA":
-        syn_detector_threader(packet)
+# def pkt_flag_processor(packet):
+#     if packet.getlayer(scp.TCP).flags == "SA":
+#         synflood_processor(packet)
 
-    if packet.getlayer(scp.TCP).flags == "A":
-        log_success_handshake(packet)
+#     if packet.getlayer(scp.TCP).flags == "A":
+#         log_success_handshake(packet)
 
 
 # for logging missing packet, and adding to number of missing packet
@@ -278,7 +346,7 @@ def reset_unique_port():
 
 
 def port_scan_processor(packet):
-    if not syn_filter(packet):
+    if not tcp_flag_filter(packet, "S"):
         return
 
     unique_port_organizer(
@@ -647,7 +715,7 @@ def arp_spoof_logger(packet):
 # sending pckets to the correct detector
 def processor(packet):
     # passing to syn flood detector
-    syn_detector_threader(packet)
+    synflood_processor(packet)
     # sorts and count unique ports (used for port scanning)
     port_scan_processor(packet)
     # passing to udp flood detector and icmp listener
