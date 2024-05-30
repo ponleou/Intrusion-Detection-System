@@ -18,7 +18,7 @@ verbose = 1  # log levels, from 0 to 3 (-1 for no logs)
 # Users can adjust with caution (affects the effectiveness of the detection)
 reset_syn_memory_time = 30  # seconds, to reset the syn packet information in memory
 max_arp_request_in_memory = 3  # max number of arp request packets stored in memory
-udp_info_time_reset = 30  # seconds, to reset the collected udp packets information
+reset_udp_memory_time = 30  # seconds, to reset the collected udp packets information
 ps_time_check = 30  # seconds, change only if you know what you are doing
 
 """
@@ -87,7 +87,7 @@ def unique_port_organizer(
     packet_src = packet.src
     packet_dst = packet.dst
 
-    # some UDP packets dont have IP layer
+    # some packets dont have IP layer
     try:
         if src_or_dst_ip[0]:
             packet_src += "(" + packet.getlayer(scp.IP).src + ")"
@@ -100,13 +100,14 @@ def unique_port_organizer(
     interaction_name = packet_src + ", " + packet_dst
 
     if interaction_name not in dictionary:
-        dictionary[interaction_name] = [[], []]
-    # dictionary = {
-    #   interaction_name = [
-    #       [packet.sports...],
-    #       [packet.dports...]
-    #   ],...
-    # }
+        # dictionary[interaction_name] = [[], []]
+        # dictionary = {
+        #   interaction_name = [
+        #       [packet.sports...],
+        #       [packet.dports...]
+        #   ],...
+        # }
+        dictionary[interaction_name] = {"s_port": [], "d_port": []}
 
     if src_or_dst_port[0]:
         if packet.sport not in dictionary[interaction_name][0]:
@@ -125,7 +126,7 @@ interaction_missing_packets = {}
 interaction_syn_memory = {}
 
 
-# function to run find_pkt_thread function in another thread
+# main processor and function caller for synflood detector
 def synflood_processor(packet):
 
     if tcp_flag_filter(packet, "S"):
@@ -147,9 +148,11 @@ def synflood_processor(packet):
         log_synflood(synflood_src, synflood_dst)
         force_reset_syn_memory()
 
+    # call the process to clear the interaction_syn_memory dictionary
     reset_syn_memory_process()
 
 
+# update any incoming syn packet information to interaction_syn_memory dictionary
 def update_interaction_syn_memory(packet):
 
     src_ip = packet.getlayer(scp.IP).src
@@ -167,12 +170,12 @@ def update_interaction_syn_memory(packet):
             "seq_num": [],
         }
 
-    # if packet_seq not in interaction_syn_memory[interaction_name]["seq_num"]:
     interaction_syn_memory[interaction_name]["seq_num"].append(packet_seq)
     interaction_syn_memory[interaction_name]["src_ip"].append(src_ip)
     interaction_syn_memory[interaction_name]["dst_ip"].append(dst_ip)
 
 
+# will reset interaction_syn_memory dictionary when reset_syn_memory is True
 def reset_syn_memory_process():
     global reset_syn_memory
 
@@ -181,6 +184,7 @@ def reset_syn_memory_process():
         reset_syn_memory = False
 
 
+# runs a countdown timer in a different thread to change reset_syn_memory to True
 def reset_syn_memory_timer():
     try:
         while True:
@@ -193,12 +197,14 @@ def reset_syn_memory_timer():
 reset_syn_memory_timer_thread = threading.Thread(target=reset_syn_memory_timer)
 
 
+# changes reset_syn_memory to True
 def force_reset_syn_memory():
     global reset_syn_memory
     reset_syn_memory = True
 
 
-# checking if that packet is the acknowledgement to the syn packet
+# checking if the packet's ack is found in the interaction_syn_memory dictionary
+# returns True if matching packet is found
 def check_ack_number(packet):
     is_valid_ack = False
 
@@ -208,6 +214,7 @@ def check_ack_number(packet):
     src_mac_ad = packet.src
     dst_mac_ad = packet.dst
 
+    # matching sequence and acknowledgement number is sequence_number + 1 = acknowledgement_number
     matching_seq = packet_ack - 1
 
     interaction_name = dst_mac_ad + ", " + src_mac_ad
@@ -230,6 +237,7 @@ def check_ack_number(packet):
             if not interaction_syn_memory[syn_interaction_name]["dst_ip"][i] == src_ip:
                 continue
 
+            # deletes the syn packet information if a matching ack packet is found
             del interaction_syn_memory[syn_interaction_name]["seq_num"][i]
             del interaction_syn_memory[syn_interaction_name]["src_ip"][i]
             del interaction_syn_memory[syn_interaction_name]["dst_ip"][i]
@@ -241,6 +249,8 @@ def check_ack_number(packet):
     return is_valid_ack
 
 
+# detects if interactions have syn packets without acknowledgement that exceeds threshold
+# returns True (if exceeds threshold), source_of_interaction, destination_of_interaction
 def synflood_detector():
     synflood_detected = False, "", ""
 
@@ -248,6 +258,7 @@ def synflood_detector():
         if len(interaction_syn_memory[interaction_name]["seq_num"]) >= syn_threshold:
             src_and_dst = interaction_name.split(", ")
             synflood_detected = True, src_and_dst[0], src_and_dst[1]
+
     return synflood_detected
 
 
@@ -259,6 +270,7 @@ def log_success_handshake(packet):
         )
 
 
+# for logging a synflood
 def log_synflood(src, dst):
     if verbose >= 0:
         logging("WARNING SYN flood detected by " + src + " targeting " + dst)
@@ -281,7 +293,7 @@ def port_scan_processor(packet):
 
     unique_port_organizer(
         packet, unique_interaction_accessing_port, [True, False]
-    )  # only taking dport
+    )  # only taking src port
 
 
 def port_scan_detector():
@@ -295,17 +307,23 @@ def port_scan_detector():
                 logging(
                     mac_ad[0]
                     + " accessed "
-                    + str(len(unique_interaction_accessing_port[interaction_name]))
+                    + str(
+                        len(
+                            unique_interaction_accessing_port[interaction_name][
+                                "s_port"
+                            ]
+                        )
+                    )
                     + " ports of "
                     + mac_ad[1]
                     + "'s connection",
                 )
 
             if (
-                len(unique_interaction_accessing_port[interaction_name][1])
+                len(unique_interaction_accessing_port[interaction_name]["s_port"])
                 >= ps_threshold
             ):
-
+                # TODO: test if port scan detection is still working
                 if verbose >= 0:
                     logging(
                         "WARNING: Portscan detected by "
@@ -323,35 +341,36 @@ port_scan_detector_thread = threading.Thread(target=port_scan_detector)
 """
 UDP FLOOD DETECTOR
 """
-udpflood_record_reset_counter = 0
-udp_pkts_info = {}
+udp_pkts_info_memory = {}
+interaction_icmp_pkt_count = {}
+# TODO: print and analyze the two dictionaries to make sure the reset properly
 
 
 # function to send packet variable to other functions
 def udp_flood_processor(packet):
 
-    if not packet.haslayer(scp.UDP):
-        return
+    if packet.haslayer(scp.UDP):
+        # creating a dictionary on udp_pkt_info to include unique ports
+        unique_port_organizer(packet, udp_pkts_info_memory, [True, True], [True, False])
+        # [True, True] to record both source and destination ports
+        # [True, False] to record the source IP address (written inside the key's name)
 
-    # creating a dictionary on udp_pkt_info to include unique ports
-    unique_port_organizer(packet, udp_pkts_info, [True, True], [True, False])
-    # [True, True] to record both source and destination ports
-    # [True, False] to record the source IP address (written inside the key's name)
+    if packet.haslayer(scp.ICMP):
+        if packet.getlayer(scp.ICMP).type == 3 and packet.getlayer(scp.ICMP).code == 3:
+
+            icmp_matches, interaction_name = check_icmp_with_udp_memory(packet)
+
+            if icmp_matches:
+                icmp_pkt_counter(interaction_name)
 
 
-# listens for icmp packets, and cross checks them for correct source and destination for ip/mac address and ports with the udp packets info
-def icmp_pkt_listener(packet):
-    if not packet.haslayer(scp.ICMP):
-        return
+# cross checks icmp packets for correct source and destination for ip/mac address and ports with udp_pkts_info_memory
+# returns True(if icmp matches with a udp packet from memory), interaction_name
+def check_icmp_with_udp_memory(packet):
 
-    # ICMP type 3 is Destination unreachable, ICMP code 3 is Port unreachable
-    if (
-        not packet.getlayer(scp.ICMP).type == 3
-        and not packet.getlayer(scp.ICMP).code == 3
-    ):
-        return
+    icmp_matches = False, ""
 
-    for interaction_name in udp_pkts_info:
+    for interaction_name in udp_pkts_info_memory:
 
         mac_ad = interaction_name.split(", ")
 
@@ -374,9 +393,9 @@ def icmp_pkt_listener(packet):
             continue
 
         # checking whether the UDP and ICMP response packet have the same source and destination ports
-        for i, sport in enumerate(udp_pkts_info[interaction_name][0]):
+        for i, sport in enumerate(udp_pkts_info_memory[interaction_name]["s_port"]):
 
-            # some UDPerror packet doesnt have source port
+            # some UDPerror packet doesnt have ports
             try:
                 if not sport == packet.getlayer(scp.UDPerror).sport:
                     continue
@@ -385,23 +404,14 @@ def icmp_pkt_listener(packet):
                 continue
 
             if (
-                udp_pkts_info[interaction_name][1][i]
+                udp_pkts_info_memory[interaction_name]["d_port"][i]
                 == packet.getlayer(scp.UDPerror).dport
             ):
-                icmp_pkt_counter(src_mac_ad + ", " + dst_mac_ad)
+                interaction_name = src_mac_ad + ", " + dst_mac_ad
+                icmp_matches = True, interaction_name
+                break
 
-
-interaction_icmp_pkt_count = {}
-
-
-# to reset the recorded UDP packet information
-def udpflood_record_reset():
-    udp_pkts_info.clear()
-
-    interaction_icmp_pkt_count.clear()
-
-    global udpflood_record_reset_counter
-    udpflood_record_reset_counter = 0
+    return icmp_matches
 
 
 def icmp_pkt_counter(interaction_name):
@@ -412,13 +422,23 @@ def icmp_pkt_counter(interaction_name):
     interaction_icmp_pkt_count[interaction_name] += 1
 
 
+# to reset the udp_pkts_info_memory and interaction_icmp_pkt_count
+def force_reset_udp_pkts_info_memory():
+    udp_pkts_info_memory.clear()
+    interaction_icmp_pkt_count.clear()
+
+
 # detector for UDP flood
-def udpflood_detector_threader(udpflood_record_reset_counter):
+def udpflood_detector_threader():
+
+    no_udpflood_detected_counter = 0
+    # counts the number of times udpflood is not detected after every udp_time_check
+    # if it exceeds a certain amount, it will reset the udp_pkts_info_memory and interaction_icmp_pkt_count
+
     while True:
         time.sleep(udp_time_check)
 
-        run_reset_counter = True
-        run_reset = False
+        reset_udp_pkts_info_memory = False
 
         for interaction_name in interaction_icmp_pkt_count:
             mac_ad = interaction_name.split(", ")
@@ -443,22 +463,26 @@ def udpflood_detector_threader(udpflood_record_reset_counter):
                         + mac_ad[1]
                     )
 
-                run_reset_counter = False
-                run_reset = True
+                # when a udp flood is detected, it will queue a udp_pkts_info_memory reset
+                reset_udp_pkts_info_memory = True
 
-        if run_reset_counter:
-            udpflood_record_reset_counter += 1
+                # continue so that no_udpflood_detected_counter (the line below) wont get counted
+                continue
 
-        max_counter = udp_info_time_reset / udp_time_check
-        # makes it so udpflood records are reseted after udp_time_reset seconds (resets after a udp flood check)
+            # runs if no udpflood is detected
+            no_udpflood_detected_counter += 1
 
-        if udpflood_record_reset_counter >= max_counter or run_reset:
-            udpflood_record_reset()
+        # the max value for no_udpflood_detected_counter to initiate a force_reset_udp_pkts_info_memory
+        # calculation makes it so that force_reset_udp_pkts_info_memory happens every reset_udp_memory_time
+        max_counter = reset_udp_memory_time / udp_time_check
+
+        if reset_udp_pkts_info_memory or no_udpflood_detected_counter >= max_counter:
+
+            no_udpflood_detected_counter = 0
+            force_reset_udp_pkts_info_memory()
 
 
-udpflood_detector_thread = threading.Thread(
-    target=udpflood_detector_threader, args=(udpflood_record_reset_counter,)
-)
+udpflood_detector_thread = threading.Thread(target=udpflood_detector_threader)
 
 """
 ARP SPOOFING DETECTOR
@@ -650,7 +674,7 @@ def processor(packet):
     port_scan_processor(packet)
     # passing to udp flood detector and icmp listener
     udp_flood_processor(packet)
-    icmp_pkt_listener(packet)
+    check_icmp_with_udp_memory(packet)
     # add arp spoofing detection
     arp_spoof_processor(packet)
 
