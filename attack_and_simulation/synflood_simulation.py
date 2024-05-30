@@ -7,7 +7,7 @@ ip_dst = input("Target IP: ")
 target_port = input("Target Port: ")
 
 
-def synflood_simulation(ip_src, ip_dst, target_port):
+def synflood_simulation(ip_dst, target_port):
     ip_layer = scp.IP(dst=ip_dst)
     # if ip_src:
     #     ip_layer.src = ip_src

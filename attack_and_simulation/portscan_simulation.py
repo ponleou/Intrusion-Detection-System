@@ -8,7 +8,7 @@ end_port = input("End port: ")
 MAX_PORT = 65535
 
 
-def port_scan(source_ip, target_ip, start_port, end_port):
+def port_scan(target_ip, start_port, end_port):
     packets = []
     for port in range(int(start_port), int(end_port) + 1):
         ip_layer = scp.IP(dst=target_ip)
