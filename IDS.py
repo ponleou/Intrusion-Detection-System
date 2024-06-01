@@ -104,13 +104,6 @@ def unique_port_organizer(
     interaction_name = packet_src + ", " + packet_dst
 
     if interaction_name not in dictionary:
-        # dictionary[interaction_name] = [[], []]
-        # dictionary = {
-        #   interaction_name = [
-        #       [packet.sports...],
-        #       [packet.dports...]
-        #   ],...
-        # }
         dictionary[interaction_name] = {"s_port": [], "d_port": []}
 
     if src_or_dst_port[0]:
@@ -677,6 +670,61 @@ def arp_spoof_logger(packet):
         )
 
 
+"""
+DNS Amplification detector
+"""
+dns_min_length = 500
+
+large_dns_response_record = {}
+
+
+def dns_amp_processor(packet):
+
+    if not packet.haslayer(scp.UDP):
+        return
+
+    if not packet.getlayer(scp.UDP).sport == 53:
+        return
+
+    if packet.len >= dns_min_length:
+        dns_amp_logger(packet)
+
+    # update_dns_qname_dictionary(packet)
+    # print(dns_pkt_memory)
+
+
+def dns_amp_logger(packet):
+    if verbose >= 0:
+        logging(
+            "WARNING: DNS Amplification detected by "
+            + "UNKNOWN"
+            + " targeting "
+            + packet.dst
+        )
+
+
+# def record_large_dns_response(packet, dictionary):
+
+#     dst_mac = packet.dst
+
+#     if dst_mac not in dictionary:
+#         dictionary[dst_mac] =
+# def update_dns_qname_dictionary(packet, dictionary=dns_pkt_memory):
+#     src_mac_ad = packet.src
+#     dst_mac_ad = packet.dst
+
+#     interaction_name = src_mac_ad + ", " + dst_mac_ad
+
+#     if interaction_name not in dictionary:
+#         dictionary[interaction_name] = {"dns_qname": []}
+
+#     if "dns_qname" not in dictionary[interaction_name]:
+#         dictionary[interaction_name]["dns_qname"] = []
+
+#     print(dns_pkt_memory)
+#     dictionary[interaction_name]["dns_qname"].append(packet.getlayer(scp.DNSQR).qname)
+
+
 # sending pckets to the correct detector
 def processor(packet):
     # passing to syn flood detector
@@ -687,6 +735,8 @@ def processor(packet):
     udp_flood_processor(packet)
     # add arp spoofing detection
     arp_spoof_processor(packet)
+    # passing to dns amplification detector
+    dns_amp_processor(packet)
 
 
 if __name__ == "__main__":
