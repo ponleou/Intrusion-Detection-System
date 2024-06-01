@@ -690,7 +690,7 @@ def dns_amp_processor(packet):
 
     if packet.haslayer(scp.DNS):
         if packet.getlayer(scp.DNS).qr == 0:
-            if check_spoof_dns_query(packet):
+            if check_spoof_dns_query(packet, arp_table):
                 update_dns_amp_target_and_attacker(packet)
 
     # dns response packets
