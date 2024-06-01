@@ -12,6 +12,8 @@ ps_threshold = 40  # minimum amount of unique accessed ports to alert port scan 
 udp_time_check = 5  # seconds for each UDP flood check (lower time means less sensitive)
 udp_threshold = 100  # minimum amount of ICMP packets in response to UDP packets in the peroid of udp_time_check to alert UDP flood (higher means less sensitive)
 
+da_threshold = 500  # minimum bytes a dns response packet size can be to trigger detector (higher means less sensitive)
+
 verbose = 0  # log levels
 # from 0 to 1
 # -1 for no logs
@@ -499,6 +501,7 @@ arp_request_memory = {}
 arp_table = {}
 # TODO: take arp table from file
 # TODO: configure own local arp table
+# TODO: add self configured arp table to local use
 
 
 # writing arp table into local file
@@ -619,6 +622,7 @@ def arp_reply(packet):
 
 
 # updates arp table with ip and mac_address, returns True if there were any changes, False if the information remained the same
+# TODO: remove if we have a self configured arp table
 def update_arp_table(ip, mac_address):
 
     arp_table_is_modified = False
@@ -673,9 +677,10 @@ def arp_spoof_logger(packet):
 """
 DNS Amplification detector
 """
-dns_min_length = 500
 
-large_dns_response_record = {}
+
+# dns_query_record = {}
+dns_amp_target_and_attacker = {}
 
 
 def dns_amp_processor(packet):
@@ -683,46 +688,79 @@ def dns_amp_processor(packet):
     if not packet.haslayer(scp.UDP):
         return
 
-    if not packet.getlayer(scp.UDP).sport == 53:
-        return
+    if packet.haslayer(scp.DNS):
+        if packet.getlayer(scp.DNS).qr == 0:
+            if check_spoof_dns_query(packet):
+                update_dns_amp_target_and_attacker(packet)
 
-    if packet.len >= dns_min_length:
-        dns_amp_logger(packet)
+    # dns response packets
+    if packet.getlayer(scp.UDP).sport == 53:
+        if packet.len >= da_threshold:
+            attacker = get_dns_amp_attacker(packet)
+            dns_amp_logger(packet, attacker)
 
-    # update_dns_qname_dictionary(packet)
-    # print(dns_pkt_memory)
+
+def get_dns_amp_attacker(packet):
+    attacker = None
+
+    if not packet.haslayer(scp.IP):
+        return attacker
+
+    ip_src = packet.getlayer(scp.IP).src
+
+    for ip in dns_amp_target_and_attacker:
+        if ip == ip_src:
+            attacker = dns_amp_target_and_attacker[ip]
+            break
+
+    return attacker
 
 
-def dns_amp_logger(packet):
+def update_dns_amp_target_and_attacker(packet):
+
+    target_ip = packet.getlayer(scp.IP).src
+    attacket_mac = packet.src
+
+    if target_ip not in dns_amp_target_and_attacker:
+        dns_amp_target_and_attacker[target_ip] = attacket_mac
+
+
+def dns_amp_logger(packet, attacker):
     if verbose >= 0:
+
+        source = "UNKNOWN"
+
+        if attacker:
+            source = attacker
+
         logging(
             "WARNING: DNS Amplification detected by "
-            + "UNKNOWN"
+            + source
             + " targeting "
             + packet.dst
         )
 
 
-# def record_large_dns_response(packet, dictionary):
+def check_spoof_dns_query(packet, arp_table):
+    is_spoof_dns_query = False
 
-#     dst_mac = packet.dst
+    if not packet.haslayer(scp.IP):
+        return is_spoof_dns_query
 
-#     if dst_mac not in dictionary:
-#         dictionary[dst_mac] =
-# def update_dns_qname_dictionary(packet, dictionary=dns_pkt_memory):
-#     src_mac_ad = packet.src
-#     dst_mac_ad = packet.dst
+    ipsrc = packet.getlayer(scp.IP).src
+    macsrc = packet.src
 
-#     interaction_name = src_mac_ad + ", " + dst_mac_ad
+    for ip in arp_table:
+        if not ip == ipsrc:
+            continue
 
-#     if interaction_name not in dictionary:
-#         dictionary[interaction_name] = {"dns_qname": []}
+        if arp_table[ip] == macsrc:
+            break
 
-#     if "dns_qname" not in dictionary[interaction_name]:
-#         dictionary[interaction_name]["dns_qname"] = []
+        is_spoof_dns_query = True
+        break
 
-#     print(dns_pkt_memory)
-#     dictionary[interaction_name]["dns_qname"].append(packet.getlayer(scp.DNSQR).qname)
+    return is_spoof_dns_query
 
 
 # sending pckets to the correct detector
