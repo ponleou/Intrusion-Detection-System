@@ -12,6 +12,8 @@ ps_threshold = 40  # minimum amount of unique accessed ports to alert port scan 
 udp_time_check = 5  # seconds for each UDP flood check (lower time means less sensitive)
 udp_threshold = 100  # minimum amount of ICMP packets in response to UDP packets in the peroid of udp_time_check to alert UDP flood (higher means less sensitive)
 
+da_threshold = 500  # minimum bytes a dns response packet size can be to trigger detector (higher means less sensitive)
+
 verbose = 0  # log levels
 # from 0 to 1
 # -1 for no logs
@@ -104,13 +106,6 @@ def unique_port_organizer(
     interaction_name = packet_src + ", " + packet_dst
 
     if interaction_name not in dictionary:
-        # dictionary[interaction_name] = [[], []]
-        # dictionary = {
-        #   interaction_name = [
-        #       [packet.sports...],
-        #       [packet.dports...]
-        #   ],...
-        # }
         dictionary[interaction_name] = {"s_port": [], "d_port": []}
 
     if src_or_dst_port[0]:
@@ -506,6 +501,7 @@ arp_request_memory = {}
 arp_table = {}
 # TODO: take arp table from file
 # TODO: configure own local arp table
+# TODO: add self configured arp table to local use
 
 
 # writing arp table into local file
@@ -626,6 +622,7 @@ def arp_reply(packet):
 
 
 # updates arp table with ip and mac_address, returns True if there were any changes, False if the information remained the same
+# TODO: remove if we have a self configured arp table
 def update_arp_table(ip, mac_address):
 
     arp_table_is_modified = False
@@ -677,6 +674,95 @@ def arp_spoof_logger(packet):
         )
 
 
+"""
+DNS Amplification detector
+"""
+
+
+# dns_query_record = {}
+dns_amp_target_and_attacker = {}
+
+
+def dns_amp_processor(packet):
+
+    if not packet.haslayer(scp.UDP):
+        return
+
+    if packet.haslayer(scp.DNS):
+        if packet.getlayer(scp.DNS).qr == 0:
+            if check_spoof_dns_query(packet, arp_table):
+                update_dns_amp_target_and_attacker(packet)
+
+    # dns response packets
+    if packet.getlayer(scp.UDP).sport == 53:
+        if packet.len >= da_threshold:
+            attacker = get_dns_amp_attacker(packet)
+            dns_amp_logger(packet, attacker)
+
+
+def get_dns_amp_attacker(packet):
+    attacker = None
+
+    if not packet.haslayer(scp.IP):
+        return attacker
+
+    ip_src = packet.getlayer(scp.IP).src
+
+    for ip in dns_amp_target_and_attacker:
+        if ip == ip_src:
+            attacker = dns_amp_target_and_attacker[ip]
+            break
+
+    return attacker
+
+
+def update_dns_amp_target_and_attacker(packet):
+
+    target_ip = packet.getlayer(scp.IP).src
+    attacket_mac = packet.src
+
+    if target_ip not in dns_amp_target_and_attacker:
+        dns_amp_target_and_attacker[target_ip] = attacket_mac
+
+
+def dns_amp_logger(packet, attacker):
+    if verbose >= 0:
+
+        source = "UNKNOWN"
+
+        if attacker:
+            source = attacker
+
+        logging(
+            "WARNING: DNS Amplification detected by "
+            + source
+            + " targeting "
+            + packet.dst
+        )
+
+
+def check_spoof_dns_query(packet, arp_table):
+    is_spoof_dns_query = False
+
+    if not packet.haslayer(scp.IP):
+        return is_spoof_dns_query
+
+    ipsrc = packet.getlayer(scp.IP).src
+    macsrc = packet.src
+
+    for ip in arp_table:
+        if not ip == ipsrc:
+            continue
+
+        if arp_table[ip] == macsrc:
+            break
+
+        is_spoof_dns_query = True
+        break
+
+    return is_spoof_dns_query
+
+
 # sending pckets to the correct detector
 def processor(packet):
     # passing to syn flood detector
@@ -687,6 +773,8 @@ def processor(packet):
     udp_flood_processor(packet)
     # add arp spoofing detection
     arp_spoof_processor(packet)
+    # passing to dns amplification detector
+    dns_amp_processor(packet)
 
 
 if __name__ == "__main__":
