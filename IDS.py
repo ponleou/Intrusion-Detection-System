@@ -41,6 +41,18 @@ def caught_error_logs(msg, file_name="ids_caught_errors.txt"):
     logging("ERROR: " + msg, file_name)
 
 
+def detect_attack_logs(attack_type, attacker, target, file_name="ids_logs.txt"):
+    logging(
+        "WARNING: "
+        + attack_type
+        + " detected from "
+        + attacker
+        + " targeting "
+        + target,
+        file_name,
+    )
+
+
 def tcp_flag_filter(packet, flag):
     is_correct_flag = False
 
@@ -272,7 +284,7 @@ def log_success_handshake(packet):
 # for logging a synflood
 def log_synflood(src, dst):
     if verbose >= 0:
-        logging("WARNING: SYN flood detected by " + src + " targeting " + dst)
+        detect_attack_logs("SYN flood", src, dst)
 
 
 """
@@ -325,12 +337,7 @@ def port_scan_detector():
                 ):
 
                     if verbose >= 0:
-                        logging(
-                            "WARNING: Portscan detected by "
-                            + mac_ad[0]
-                            + " targeting "
-                            + mac_ad[1],
-                        )
+                        detect_attack_logs("Port scan", mac_ad[0], mac_ad[1])
 
             reset_unique_port()
     except KeyboardInterrupt as e:
@@ -462,12 +469,7 @@ def udpflood_detector():
                 if interaction_icmp_pkt_count[interaction_name] >= udp_threshold:
 
                     if verbose >= 0:
-                        logging(
-                            "WARNING: UDP flood detected by "
-                            + mac_ad[0]
-                            + " targeting "
-                            + mac_ad[1]
-                        )
+                        detect_attack_logs("UDP flood", mac_ad[0], mac_ad[1])
 
                     # when a udp flood is detected, it will queue a udp_pkts_info_memory reset
                     reset_udp_pkts_info_memory = True
@@ -666,12 +668,7 @@ def arp_spoof_logger(packet):
     target = packet.dst
 
     if verbose >= 0:
-        logging(
-            "WARNING: Spoofed ARP packet detected by "
-            + attacker
-            + " targeting "
-            + target
-        )
+        detect_attack_logs("ARP spoofing", attacker, target)
 
 
 """
@@ -733,12 +730,7 @@ def dns_amp_logger(packet, attacker):
         if attacker:
             source = attacker
 
-        logging(
-            "WARNING: DNS Amplification detected by "
-            + source
-            + " targeting "
-            + packet.dst
-        )
+        detect_attack_logs("DNS amplification", source, packet.dst)
 
 
 def check_spoof_dns_query(packet, arp_table):
