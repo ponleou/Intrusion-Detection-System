@@ -134,13 +134,16 @@ def unique_port_organizer(
 ARP table configuration
 """
 
-arp_table = {}
+global_arp_table = {}
 # TODO: take arp table from file
 # TODO: configure own local arp table
 # TODO: add self configured arp table to local use
 
 
-def configure_arp_table(arp_table, file_name="arp_table.json"):
+def configure_arp_table(file_name="arp_table.json"):
+    arp_table = {}
+
+    # creating the arp table dictionary
     try:
         with open(file_name, "r") as f:
 
@@ -152,7 +155,10 @@ def configure_arp_table(arp_table, file_name="arp_table.json"):
     except:
         print("ARP table not found, creating ARP table...")
 
-        arp_table = create_arp_table(arp_table)
+        generated_arp_table = create_arp_table(arp_table)
+        arp_table.copy()
+
+    write_arp_table(arp_table, file_name)
 
 
 def create_arp_table(dictionary):
@@ -178,10 +184,12 @@ def create_arp_table(dictionary):
 
 
 # writing arp table into local file
-def write_arp_table(file_name="arp_table.json"):
+def write_arp_table(arp_table, file_name):
     with open(file_name, "w") as f:
         json.dump(arp_table, f)
 
+
+configure_arp_table()
 
 """
 SYN FLOOD DETECTOR
@@ -695,12 +703,12 @@ def check_arp_table(ip, mac_address):
     # False means the ip and mac address doesnt match the arp table (its a spoofed packet)
     # True means the ip and mac address matches the arp table (its a safe invalid packet)
 
-    for arp_ip in arp_table:
+    for arp_ip in global_arp_table:
 
         if not ip == arp_ip:
             continue
 
-        if arp_table[arp_ip] == mac_address:
+        if global_arp_table[arp_ip] == mac_address:
             matches_arp_table = True
 
     return matches_arp_table
@@ -731,7 +739,7 @@ def dns_amp_processor(packet):
 
     if packet.haslayer(scp.DNS):
         if packet.getlayer(scp.DNS).qr == 0:
-            if check_spoof_dns_query(packet, arp_table):
+            if check_spoof_dns_query(packet, global_arp_table):
                 update_dns_amp_target_and_attacker(packet)
 
     # dns response packets
