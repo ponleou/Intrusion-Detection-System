@@ -2,6 +2,7 @@ import scapy.all as scp
 from datetime import datetime
 import threading
 import time
+import json
 
 
 # Users can adjust these values
@@ -507,9 +508,9 @@ arp_table = {}
 
 
 # writing arp table into local file
-def write_arp_table(file_name="arp_table.txt"):
+def write_arp_table(file_name="arp_table.json"):
     with open(file_name, "w") as f:
-        f.write(str(arp_table))
+        json.dump(arp_table, f)
 
 
 # main function for arp spoof detection
