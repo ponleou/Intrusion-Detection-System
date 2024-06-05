@@ -131,6 +131,59 @@ def unique_port_organizer(
 
 
 """
+ARP table configuration
+"""
+
+arp_table = {}
+# TODO: take arp table from file
+# TODO: configure own local arp table
+# TODO: add self configured arp table to local use
+
+
+def configure_arp_table(arp_table, file_name="arp_table.json"):
+    try:
+        with open(file_name, "r") as f:
+
+            print("ARP table found, copying ARP table...")
+
+            json_arp_table = json.load(f)
+            arp_table = json_arp_table.copy()
+
+    except:
+        print("ARP table not found, creating ARP table...")
+
+        arp_table = create_arp_table(arp_table)
+
+
+def create_arp_table(dictionary):
+
+    gateway_ip = scp.conf.route.route("0.0.0.0")[2]
+
+    split_gateway_ip = gateway_ip.rsplit(".", 1)
+    # right to left split, splits the first one (aka splits the last delimiter ".")
+    # to get xxx.xxx.xxx and xxx
+
+    ip_range = split_gateway_ip[0] + ".0/24"  # to get xxx.xxx.xxx.0/24
+
+    arp_request_broadcast = scp.Ether(dst="ff:ff:ff:ff:ff:ff") / scp.ARP(pdst=ip_range)
+
+    answered_list = scp.srp(arp_request_broadcast, timeout=1, verbose=False)[0]
+
+    for answer in answered_list:
+        ip = answer[1].getlayer(scp.ARP).psrc
+        mac = answer[1].getlayer(scp.ARP).hwsrc
+        dictionary[ip] = mac
+
+    return dictionary
+
+
+# writing arp table into local file
+def write_arp_table(file_name="arp_table.json"):
+    with open(file_name, "w") as f:
+        json.dump(arp_table, f)
+
+
+"""
 SYN FLOOD DETECTOR
 """
 reset_syn_memory = False
@@ -501,16 +554,6 @@ ARP SPOOFING DETECTOR
 """
 
 arp_request_memory = {}
-arp_table = {}
-# TODO: take arp table from file
-# TODO: configure own local arp table
-# TODO: add self configured arp table to local use
-
-
-# writing arp table into local file
-def write_arp_table(file_name="arp_table.json"):
-    with open(file_name, "w") as f:
-        json.dump(arp_table, f)
 
 
 # main function for arp spoof detection
@@ -536,19 +579,19 @@ def arp_spoof_processor(packet):
         ip = packet.getlayer(scp.ARP).psrc
         mac_address = packet.getlayer(scp.ARP).hwsrc
 
-        if is_valid_reply:
+        # if is_valid_reply:
 
-            # returns True if valid arp reply packet changes the arp table
-            is_modified = update_arp_table(ip, mac_address)
+        #     # returns True if valid arp reply packet changes the arp table
+        #     is_modified = update_arp_table(ip, mac_address)
 
-            if is_modified:
-                if verbose >= 1:
-                    logging(
-                        "ARP table has been modified, " + ip + " is at " + mac_address
-                    )
+        #     if is_modified:
+        #         if verbose >= 1:
+        #             logging(
+        #                 "ARP table has been modified, " + ip + " is at " + mac_address
+        #             )
 
         # process for invalid replies (reply without matching request)
-        else:
+        if not is_valid_reply:
 
             # checking whether invalid packet matches current arp table (ignores invalid reply if its the same)
             not_spoof_packet = check_arp_table(ip, mac_address)
@@ -626,23 +669,23 @@ def arp_reply(packet):
 
 # updates arp table with ip and mac_address, returns True if there were any changes, False if the information remained the same
 # TODO: remove if we have a self configured arp table
-def update_arp_table(ip, mac_address):
+# def update_arp_table(ip, mac_address):
 
-    arp_table_is_modified = False
+#     arp_table_is_modified = False
 
-    if ip in arp_table:
+#     if ip in arp_table:
 
-        if arp_table[ip] == mac_address:
-            return arp_table_is_modified
+#         if arp_table[ip] == mac_address:
+#             return arp_table_is_modified
 
-        arp_table_is_modified = True
+#         arp_table_is_modified = True
 
-    arp_table[ip] = mac_address
+#     arp_table[ip] = mac_address
 
-    # save arp table to local
-    write_arp_table()
+#     # save arp table to local
+#     write_arp_table()
 
-    return arp_table_is_modified
+#     return arp_table_is_modified
 
 
 # checking whether an ip and mac address matches information inside arp table, returns False if it doesnt match
