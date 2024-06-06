@@ -159,6 +159,9 @@ def configure_arp_table(file_name="arp_table.json"):
         arp_table.copy()
 
     write_arp_table(arp_table, file_name)
+    print("ARP table created.")
+
+    # TODO: copy arp table to global
 
 
 # TODO: test if it is interfered by an ARP spoof
@@ -171,13 +174,13 @@ def create_arp_table(dictionary):
     # to get xxx.xxx.xxx and xxx
     packet_array = []
 
-    for i in range(1, 255):
+    for i in range(1, 256):
         ip = split_gateway_ip[0] + "." + str(i)
         arp_request_broadcast = scp.Ether(dst="ff:ff:ff:ff:ff:ff") / scp.ARP(pdst=ip)
         packet_array.append(arp_request_broadcast)
 
         if len(packet_array) >= 5:
-            answered_list = scp.srp(packet_array, timeout=1, verbose=False)[0]
+            answered_list = scp.srp(packet_array, timeout=0.5, verbose=False)[0]
             packet_array.clear()
 
             for answer in answered_list:
@@ -357,6 +360,7 @@ def log_synflood(src, dst):
 """
 PORT SCAN DETECTOR
 """
+# FIXME: ignore gateway's mac and ip from port scan detection
 # dictionary for holding unique devices and the ports they are accessing (used for port scan)
 unique_interaction_accessing_port = {}
 
