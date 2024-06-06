@@ -159,14 +159,16 @@ def configure_arp_table(file_name="arp_table.json"):
         arp_table.copy()
 
     write_arp_table(arp_table, file_name)
-    print("ARP table created.")
-
     # TODO: copy arp table to global
+    print("ARP table configured.")
 
 
 # TODO: test if it is interfered by an ARP spoof
 # because we will update arp table every 30 or so seconds in the background
 def create_arp_table(dictionary):
+
+    PACKETS_SENT_PER_ROUND = 10
+    MAX_VALUE_IPV4 = 255
 
     gateway_ip = scp.conf.route.route("0.0.0.0")[2]
     split_gateway_ip = gateway_ip.rsplit(".", 1)
@@ -174,12 +176,15 @@ def create_arp_table(dictionary):
     # to get xxx.xxx.xxx and xxx
     packet_array = []
 
-    for i in range(1, 256):
+    for i in range(1, MAX_VALUE_IPV4 + 1):
         ip = split_gateway_ip[0] + "." + str(i)
         arp_request_broadcast = scp.Ether(dst="ff:ff:ff:ff:ff:ff") / scp.ARP(pdst=ip)
         packet_array.append(arp_request_broadcast)
 
-        if len(packet_array) >= 5:
+        if (
+            len(packet_array) >= PACKETS_SENT_PER_ROUND
+            or MAX_VALUE_IPV4 - i < PACKETS_SENT_PER_ROUND
+        ):
             answered_list = scp.srp(packet_array, timeout=0.5, verbose=False)[0]
             packet_array.clear()
 
