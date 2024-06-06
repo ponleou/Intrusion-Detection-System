@@ -161,24 +161,29 @@ def configure_arp_table(file_name="arp_table.json"):
     write_arp_table(arp_table, file_name)
 
 
+# TODO: test if it is interfered by an ARP spoof
+# because we will update arp table every 30 or so seconds in the background
 def create_arp_table(dictionary):
 
     gateway_ip = scp.conf.route.route("0.0.0.0")[2]
-
     split_gateway_ip = gateway_ip.rsplit(".", 1)
     # right to left split, splits the first one (aka splits the last delimiter ".")
     # to get xxx.xxx.xxx and xxx
+    packet_array = []
 
-    ip_range = split_gateway_ip[0] + ".0/24"  # to get xxx.xxx.xxx.0/24
+    for i in range(1, 255):
+        ip = split_gateway_ip[0] + "." + str(i)
+        arp_request_broadcast = scp.Ether(dst="ff:ff:ff:ff:ff:ff") / scp.ARP(pdst=ip)
+        packet_array.append(arp_request_broadcast)
 
-    arp_request_broadcast = scp.Ether(dst="ff:ff:ff:ff:ff:ff") / scp.ARP(pdst=ip_range)
+        if len(packet_array) >= 5:
+            answered_list = scp.srp(packet_array, timeout=1, verbose=False)[0]
+            packet_array.clear()
 
-    answered_list = scp.srp(arp_request_broadcast, timeout=1, verbose=False)[0]
-
-    for answer in answered_list:
-        ip = answer[1].getlayer(scp.ARP).psrc
-        mac = answer[1].getlayer(scp.ARP).hwsrc
-        dictionary[ip] = mac
+            for answer in answered_list:
+                ip = answer[1].getlayer(scp.ARP).psrc
+                mac = answer[1].getlayer(scp.ARP).hwsrc
+                dictionary[ip] = mac
 
     return dictionary
 
