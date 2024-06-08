@@ -135,11 +135,14 @@ ARP table configuration
 """
 
 global_arp_table = {}
+# TODO: update global arp table and arp table at an interval (test with arp attack)
+
+no_arp_spoof_packet = True
+# if there has been an arp spoof, this will be set to false
+# changes back to true after there is no arp spoof for a certain time
 
 
 def configure_arp_table(file_name="arp_table.json"):
-    arp_table = {}
-
     # creating the arp table dictionary
     try:
         with open(file_name, "r") as f:
@@ -152,11 +155,10 @@ def configure_arp_table(file_name="arp_table.json"):
     except:
         print("ARP table not found, creating ARP table...")
 
-        generated_arp_table = create_arp_table(arp_table)
-        arp_table.copy()
+        generated_arp_table = collect_arp_table_info()
 
-    write_arp_table(arp_table, file_name)
-    configure_global_arp_table(arp_table)
+    write_arp_table(generated_arp_table, file_name)
+    configure_global_arp_table(generated_arp_table)
     print("ARP table configured.")
 
 
@@ -168,7 +170,9 @@ def configure_global_arp_table(arp_table):
 
 # TODO: test if it is interfered by an ARP spoof
 # because we will update arp table every 30 or so seconds in the background
-def create_arp_table(dictionary):
+def collect_arp_table_info():
+
+    dictionary = {}
 
     PACKETS_SENT_PER_ROUND = 10
     MAX_VALUE_IPV4 = 255
@@ -203,6 +207,21 @@ def create_arp_table(dictionary):
 def write_arp_table(arp_table, file_name):
     with open(file_name, "w") as f:
         json.dump(arp_table, f)
+
+
+def update_arp_table():
+    while True:
+        time.sleep(30)
+
+        updated_arp_table = collect_arp_table_info()
+
+        while True:
+
+            if no_arp_spoof_packet:
+                configure_global_arp_table(updated_arp_table)
+                break
+
+            time.sleep(5)
 
 
 """
@@ -679,6 +698,7 @@ def arp_reply(packet):
     return is_valid_reply
 
 
+# TODO: check if there will be any errors if arp spoof is happening while update is running
 # checking whether an ip and mac address matches information inside arp table, returns False if it doesnt match
 def check_arp_table(ip, mac_address):
 
