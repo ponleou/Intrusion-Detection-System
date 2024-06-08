@@ -24,7 +24,7 @@ verbose = 0  # log levels
 
 # Users can adjust with caution (affects the effectiveness of the detection)
 reset_syn_memory_time = 30  # seconds, to reset the syn packet information in memory
-max_arp_request_in_memory = 3  # max number of arp request packets stored in memory
+max_arp_request_in_memory = 6  # max number of arp request packets stored in memory
 reset_udp_memory_time = 30  # seconds, to reset the collected udp packets information
 ps_time_check = 30  # seconds, change only if you know what you are doing
 
@@ -226,7 +226,7 @@ def update_arp_table():
 
             if num_arp_spoof_packet == 0:
                 configure_global_arp_table(updated_arp_table)
-                write_arp_table(updated_arp_table, local_arp_table_file)
+                write_arp_table(global_arp_table, local_arp_table_file)
                 break
 
             time.sleep(5)
@@ -619,7 +619,10 @@ def arp_spoof_processor(packet):
 
     # op = 1 is request packet
     if arp_op == 1:
-        store_arp_request(packet)
+        store_arp_request_thread = threading.Thread(
+            target=store_arp_request, args=(packet,)
+        )
+        store_arp_request_thread.start()
 
     # op =2 is reply packet
     if arp_op == 2:
@@ -643,26 +646,28 @@ def arp_spoof_processor(packet):
                 mark_arp_spoof_thread.start()
 
     # clearing arp requests in memory when it reaches maximum memory
-    arp_request_in_memory = 0
-    arp_request_src_in_memory = 0
+    # arp_request_in_memory = 0
+    # arp_request_src_in_memory = 0
 
-    for arp_request in arp_request_memory:
-        arp_request_in_memory += len(
-            arp_request_memory[arp_request][
-                next(iter(arp_request_memory[arp_request].keys()))
-            ]
-        )
+    # for arp_request in arp_request_memory:
+    #     arp_request_in_memory += len(
+    #         arp_request_memory[arp_request][
+    #             next(iter(arp_request_memory[arp_request].keys()))
+    #         ]
+    #     )
 
-    arp_request_src_in_memory += len(arp_request_memory)
+    # arp_request_src_in_memory += len(arp_request_memory)
 
-    if (
-        arp_request_in_memory >= max_arp_request_in_memory
-        or arp_request_src_in_memory >= max_arp_request_in_memory
-    ):
-        arp_request_memory.clear()
+    # if (
+    #     arp_request_in_memory >= max_arp_request_in_memory
+    #     or arp_request_src_in_memory >= max_arp_request_in_memory
+    # ):
+    #     arp_request_memory.clear()
 
 
 def mark_arp_spoof():
+    global num_arp_spoof_packet
+
     num_arp_spoof_packet += 1
     time.sleep(as_time_check)
     num_arp_spoof_packet -= 1
@@ -671,7 +676,7 @@ def mark_arp_spoof():
 mark_arp_spoof_thread = threading.Thread(target=mark_arp_spoof)
 
 
-# stores arp requests packets to memory
+# stores arp requests packets to memory for one second
 def store_arp_request(packet):
     request_psrc = packet.getlayer(scp.ARP).psrc  # ip of source/requester
     request_hwsrc = packet.getlayer(scp.ARP).hwsrc  # mac address of source/requester
@@ -683,6 +688,13 @@ def store_arp_request(packet):
 
     arp_request_memory[request_psrc]["request_to"].append(request_pdst)
     arp_request_memory[request_psrc]["src_mac"].append(request_hwsrc)
+
+    time.sleep(1)
+
+    for i, pdst in enumerate(arp_request_memory[request_psrc]["request_to"]):
+        if request_pdst == pdst:
+            del arp_request_memory[request_psrc]["request_to"][i]
+            del arp_request_memory[request_psrc]["src_mac"][i]
 
 
 # takes arp reply packet to cross-check request packet with memory, returns True if matching request packet is found/reply is valid
