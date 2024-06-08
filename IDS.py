@@ -137,9 +137,11 @@ ARP table configuration
 global_arp_table = {}
 # TODO: update global arp table and arp table at an interval (test with arp attack)
 
-no_arp_spoof_packet = True
-# if there has been an arp spoof, this will be set to false
-# changes back to true after there is no arp spoof for a certain time
+num_arp_spoof_packet = 0
+# the number of arp spoof packet within the last set time
+
+as_time_check = 5
+# seconds, the amount of time one arp spoof packet is recorded in the num_arp_spoof_packet
 
 local_arp_table_file = "arp_table.json"
 
@@ -222,7 +224,7 @@ def update_arp_table():
 
         while True:
 
-            if no_arp_spoof_packet:
+            if num_arp_spoof_packet == 0:
                 configure_global_arp_table(updated_arp_table)
                 write_arp_table(updated_arp_table, local_arp_table_file)
                 break
@@ -638,6 +640,7 @@ def arp_spoof_processor(packet):
             # if invalid reply doesn't match arp table, calls as arp spoof packet
             if not not_spoof_packet:
                 arp_spoof_logger(packet)
+                mark_arp_spoof_thread.start()
 
     # clearing arp requests in memory when it reaches maximum memory
     arp_request_in_memory = 0
@@ -657,6 +660,15 @@ def arp_spoof_processor(packet):
         or arp_request_src_in_memory >= max_arp_request_in_memory
     ):
         arp_request_memory.clear()
+
+
+def mark_arp_spoof():
+    num_arp_spoof_packet += 1
+    time.sleep(as_time_check)
+    num_arp_spoof_packet -= 1
+
+
+mark_arp_spoof_thread = threading.Thread(target=mark_arp_spoof)
 
 
 # stores arp requests packets to memory
