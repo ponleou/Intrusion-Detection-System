@@ -163,9 +163,9 @@ def configure_arp_table(file_name="arp_table.json"):
 
 
 def configure_global_arp_table(arp_table):
-    global global_arp_table
 
-    global_arp_table = arp_table.copy()
+    for arp_ip in arp_table:
+        global_arp_table[arp_ip] = arp_table[arp_ip]
 
 
 # TODO: test if it is interfered by an ARP spoof
