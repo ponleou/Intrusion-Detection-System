@@ -141,11 +141,15 @@ no_arp_spoof_packet = True
 # if there has been an arp spoof, this will be set to false
 # changes back to true after there is no arp spoof for a certain time
 
+local_arp_table_file = "arp_table.json"
 
-def configure_arp_table(file_name="arp_table.json"):
+
+def configure_arp_table():
     # creating the arp table dictionary
+    arp_table = {}
+
     try:
-        with open(file_name, "r") as f:
+        with open(local_arp_table_file, "r") as f:
 
             print("ARP table found, copying ARP table...")
 
@@ -156,9 +160,10 @@ def configure_arp_table(file_name="arp_table.json"):
         print("ARP table not found, creating ARP table...")
 
         generated_arp_table = collect_arp_table_info()
+        arp_table = generated_arp_table.copy()
 
-    write_arp_table(generated_arp_table, file_name)
-    configure_global_arp_table(generated_arp_table)
+    write_arp_table(arp_table, local_arp_table_file)
+    configure_global_arp_table(arp_table)
     print("ARP table configured.")
 
 
@@ -219,10 +224,13 @@ def update_arp_table():
 
             if no_arp_spoof_packet:
                 configure_global_arp_table(updated_arp_table)
+                write_arp_table(updated_arp_table, local_arp_table_file)
                 break
 
             time.sleep(5)
 
+
+update_arp_table_thread = threading.Thread(target=update_arp_table)
 
 """
 SYN FLOOD DETECTOR
@@ -826,6 +834,7 @@ def processor(packet):
 
 if __name__ == "__main__":
     configure_arp_table()
+    update_arp_table_thread.start()
     reset_syn_memory_timer_thread.start()
     port_scan_detector_thread.start()
     udpflood_detector_thread.start()
