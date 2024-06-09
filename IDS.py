@@ -42,6 +42,7 @@ num_arp_spoof_packet = 0
 local_arp_table_file = "arp_table.json"
 
 
+# function to configure a local arp table for the ids
 def configure_arp_table():
     # creating the arp table dictionary
     arp_table = {}
@@ -65,14 +66,15 @@ def configure_arp_table():
     print("ARP table configured.")
 
 
+# copies the arp table to a global function for other functions in the ids to use
 def configure_global_arp_table(arp_table):
 
     for arp_ip in arp_table:
         global_arp_table[arp_ip] = arp_table[arp_ip]
 
 
-# TODO: test if it is interfered by an ARP spoof
-# because we will update arp table every 30 or so seconds in the background
+# sends arp request packets to all possible ips in the network to get mac addresses of devices in the network
+# returns the arp table as a dictionary
 def collect_arp_table_info():
 
     dictionary = {}
@@ -112,6 +114,7 @@ def write_arp_table(arp_table, file_name):
         json.dump(arp_table, f)
 
 
+# updates the arp table every 30 seconds (as set) by sending arp request packets to all possible ips in the network again
 def update_arp_table():
     while True:
         time.sleep(30)
