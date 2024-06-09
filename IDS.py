@@ -8,7 +8,7 @@ import json
 # Users can adjust these values
 syn_threshold = 100  # minimum amount of missing packets in the period of syn_time_check to alert detection of SYN flood (Higher means less sensitive)
 
-ps_threshold = 40  # minimum amount of unique accessed ports to alert port scan (higher means less sentitive)
+ps_threshold = 50  # minimum amount of unique accessed ports to alert port scan (higher means less sentitive)
 
 udp_time_check = 5  # seconds for each UDP flood check (lower time means less sensitive)
 udp_threshold = 100  # minimum amount of ICMP packets in response to UDP packets in the peroid of udp_time_check to alert UDP flood (higher means less sensitive)
@@ -414,7 +414,6 @@ def log_synflood(src, dst):
 """
 PORT SCAN DETECTOR
 """
-# FIXME: ignore gateway's mac and ip from port scan detection
 # dictionary for holding unique devices and the ports they are accessing (used for port scan)
 unique_interaction_accessing_port = {}
 
