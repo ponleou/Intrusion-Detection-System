@@ -28,107 +28,6 @@ max_arp_request_in_memory = 6  # max number of arp request packets stored in mem
 reset_udp_memory_time = 30  # seconds, to reset the collected udp packets information
 ps_time_check = 30  # seconds, change only if you know what you are doing
 
-"""
-GLOBAL FUNCTIONS
-"""
-
-
-def logging(msg, file_name="ids_logs.txt"):
-    with open(file_name, "a") as f:
-        f.write(str(datetime.now()) + ": " + msg + "\n")
-
-
-def caught_error_logs(msg, file_name="ids_caught_errors.txt"):
-    logging("ERROR: " + msg, file_name)
-
-
-def detect_attack_logs(attack_type, attacker, target, file_name="ids_logs.txt"):
-    logging(
-        "WARNING: "
-        + attack_type
-        + " detected from "
-        + attacker
-        + " targeting "
-        + target,
-        file_name,
-    )
-
-
-def tcp_flag_filter(packet, flag):
-    is_correct_flag = False
-
-    if not packet.haslayer(scp.TCP):
-        return is_correct_flag
-
-    try:
-        packet_flag = packet.getlayer(scp.TCP).flags
-        if packet_flag == flag:
-            is_correct_flag = True
-    except Exception as e:
-        caught_error_logs("TCP packet without flags; " + str(e))
-
-    return is_correct_flag
-
-
-def get_ack_from_tcp(packet):
-    packet_ack_number = None
-
-    if not packet.haslayer(scp.TCP):
-        return packet_ack_number
-
-    try:
-        packet_ack_number = packet.getlayer(scp.TCP).ack
-    except Exception as e:
-        caught_error_logs("TCP packet without ack number; " + str(e))
-
-    return packet_ack_number
-
-
-def get_arp_operation(packet):
-    arp_op = None
-
-    if not packet.haslayer(scp.ARP):
-        return arp_op
-
-    try:
-        arp_op = packet.getlayer(scp.ARP).op
-    except Exception as e:
-        caught_error_logs("ARP packet without operation value: " + str(e))
-
-    return arp_op
-
-
-def unique_port_organizer(
-    packet, dictionary, src_or_dst_port=[True, True], src_or_dst_ip=[False, False]
-):
-    # src_or_dst_port can be changed to include or remove source port or destination port
-    # src_or_dst_ip can be changed to include or remove source ip or destination ip (stays in the name of each array: interaction_name)
-    packet_src = packet.src
-    packet_dst = packet.dst
-
-    # some packets dont have IP layer
-    try:
-        if src_or_dst_ip[0]:
-            packet_src += "(" + packet.getlayer(scp.IP).src + ")"
-
-        if src_or_dst_ip[1]:
-            packet_dst += "(" + packet.getlayer(scp.IP).dst + ")"
-    except Exception as e:
-        caught_error_logs("Transfer packet without IP layer; " + str(e))
-
-    interaction_name = packet_src + ", " + packet_dst
-
-    if interaction_name not in dictionary:
-        dictionary[interaction_name] = {"s_port": [], "d_port": []}
-
-    if src_or_dst_port[0]:
-        if packet.sport not in dictionary[interaction_name]["s_port"]:
-            dictionary[interaction_name]["s_port"].append(packet.sport)
-
-    if src_or_dst_port[1]:
-        if packet.dport not in dictionary[interaction_name]["d_port"]:
-            dictionary[interaction_name]["d_port"].append(packet.dport)
-
 
 """
 ARP table configuration
@@ -139,8 +38,6 @@ global_arp_table = {}
 num_arp_spoof_packet = 0
 # the number of arp spoof packet within the last set time
 
-as_time_check = 5
-# seconds, the amount of time one arp spoof packet is recorded in the num_arp_spoof_packet
 
 local_arp_table_file = "arp_table.json"
 
@@ -232,6 +129,108 @@ def update_arp_table():
 
 
 update_arp_table_thread = threading.Thread(target=update_arp_table)
+
+"""
+GLOBAL FUNCTIONS
+"""
+
+
+def logging(msg, file_name="ids_logs.txt"):
+    with open(file_name, "a") as f:
+        f.write(str(datetime.now()) + ": " + msg + "\n")
+
+
+def caught_error_logs(msg, file_name="ids_caught_errors.txt"):
+    logging("ERROR: " + msg, file_name)
+
+
+def detect_attack_logs(attack_type, attacker_mac, target_mac, file_name="ids_logs.txt"):
+    logging(
+        "WARNING: "
+        + attack_type
+        + " detected from "
+        + attacker_mac
+        + " targeting "
+        + target_mac,
+        file_name,
+    )
+
+
+def tcp_flag_filter(packet, flag):
+    is_correct_flag = False
+
+    if not packet.haslayer(scp.TCP):
+        return is_correct_flag
+
+    try:
+        packet_flag = packet.getlayer(scp.TCP).flags
+        if packet_flag == flag:
+            is_correct_flag = True
+    except Exception as e:
+        caught_error_logs("TCP packet without flags; " + str(e))
+
+    return is_correct_flag
+
+
+def get_ack_from_tcp(packet):
+    packet_ack_number = None
+
+    if not packet.haslayer(scp.TCP):
+        return packet_ack_number
+
+    try:
+        packet_ack_number = packet.getlayer(scp.TCP).ack
+    except Exception as e:
+        caught_error_logs("TCP packet without ack number; " + str(e))
+
+    return packet_ack_number
+
+
+def get_arp_operation(packet):
+    arp_op = None
+
+    if not packet.haslayer(scp.ARP):
+        return arp_op
+
+    try:
+        arp_op = packet.getlayer(scp.ARP).op
+    except Exception as e:
+        caught_error_logs("ARP packet without operation value: " + str(e))
+
+    return arp_op
+
+
+def unique_port_organizer(
+    packet, dictionary, src_or_dst_port=[True, True], src_or_dst_ip=[False, False]
+):
+    # src_or_dst_port can be changed to include or remove source port or destination port
+    # src_or_dst_ip can be changed to include or remove source ip or destination ip (stays in the name of each array: interaction_name)
+    packet_src = packet.src
+    packet_dst = packet.dst
+
+    # some packets dont have IP layer
+    try:
+        if src_or_dst_ip[0]:
+            packet_src += "(" + packet.getlayer(scp.IP).src + ")"
+
+        if src_or_dst_ip[1]:
+            packet_dst += "(" + packet.getlayer(scp.IP).dst + ")"
+    except Exception as e:
+        caught_error_logs("Transfer packet without IP layer; " + str(e))
+
+    interaction_name = packet_src + ", " + packet_dst
+
+    if interaction_name not in dictionary:
+        dictionary[interaction_name] = {"s_port": [], "d_port": []}
+
+    if src_or_dst_port[0]:
+        if packet.sport not in dictionary[interaction_name]["s_port"]:
+            dictionary[interaction_name]["s_port"].append(packet.sport)
+
+    if src_or_dst_port[1]:
+        if packet.dport not in dictionary[interaction_name]["d_port"]:
+            dictionary[interaction_name]["d_port"].append(packet.dport)
+
 
 """
 SYN FLOOD DETECTOR
@@ -642,15 +641,17 @@ def arp_spoof_processor(packet):
             # if invalid reply doesn't match arp table, calls as arp spoof packet
             if not not_spoof_packet:
                 arp_spoof_logger(packet)
-                mark_arp_spoof_thread = threading.Thread(target=mark_arp_spoof)
+                mark_arp_spoof_thread = threading.Thread(
+                    target=mark_arp_spoof, args=(5,)
+                )
                 mark_arp_spoof_thread.start()
 
 
-def mark_arp_spoof():
+def mark_arp_spoof(time_between):
     global num_arp_spoof_packet
 
     num_arp_spoof_packet += 1
-    time.sleep(as_time_check)
+    time.sleep(time_between)
     num_arp_spoof_packet -= 1
 
 
@@ -708,13 +709,16 @@ def arp_reply(packet):
     return is_valid_reply
 
 
-# TODO: check if there will be any errors if arp spoof is happening while update is running
 # checking whether an ip and mac address matches information inside arp table, returns False if it doesnt match
+# only runs when invalid arp packets are found
 def check_arp_table(ip, mac_address):
-
     matches_arp_table = False
     # False means the ip and mac address doesnt match the arp table (its a spoofed packet)
     # True means the ip and mac address matches the arp table (its a safe invalid packet)
+
+    global num_arp_spoof_packet
+    num_arp_spoof_packet += 1
+    # adds a value to the arp spoof packet to stop global_arp_table from updating while function is running
 
     for arp_ip in global_arp_table:
 
@@ -723,6 +727,8 @@ def check_arp_table(ip, mac_address):
 
         if global_arp_table[arp_ip] == mac_address:
             matches_arp_table = True
+
+    num_arp_spoof_packet -= 1
 
     return matches_arp_table
 
