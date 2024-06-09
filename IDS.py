@@ -145,13 +145,22 @@ def caught_error_logs(msg, file_name="ids_caught_errors.txt"):
 
 
 def detect_attack_logs(attack_type, attacker_mac, target_mac, file_name="ids_logs.txt"):
+    attack_ip = find_ip_from_mac(attacker_mac)
+    target_ip = find_ip_from_mac(target_mac)
+
     logging(
         "WARNING: "
         + attack_type
         + " detected from "
         + attacker_mac
+        + " ("
+        + attack_ip
+        + ")"
         + " targeting "
-        + target_mac,
+        + target_mac
+        + " ("
+        + target_ip
+        + ")",
         file_name,
     )
 
@@ -230,6 +239,18 @@ def unique_port_organizer(
     if src_or_dst_port[1]:
         if packet.dport not in dictionary[interaction_name]["d_port"]:
             dictionary[interaction_name]["d_port"].append(packet.dport)
+
+
+def find_ip_from_mac(mac_address):
+    ip = "UNKNOWN"
+
+    for arp_ip in global_arp_table:
+
+        if mac_address == global_arp_table[arp_ip]:
+            ip = arp_ip
+            break
+
+    return ip
 
 
 """
