@@ -2,12 +2,13 @@ import scapy.all as scp
 from datetime import datetime
 import threading
 import time
+import json
 
 
 # Users can adjust these values
 syn_threshold = 100  # minimum amount of missing packets in the period of syn_time_check to alert detection of SYN flood (Higher means less sensitive)
 
-ps_threshold = 40  # minimum amount of unique accessed ports to alert port scan (higher means less sentitive)
+ps_threshold = 50  # minimum amount of unique accessed ports to alert port scan (higher means less sentitive)
 
 udp_time_check = 5  # seconds for each UDP flood check (lower time means less sensitive)
 udp_threshold = 100  # minimum amount of ICMP packets in response to UDP packets in the peroid of udp_time_check to alert UDP flood (higher means less sensitive)
@@ -23,9 +24,114 @@ verbose = 0  # log levels
 
 # Users can adjust with caution (affects the effectiveness of the detection)
 reset_syn_memory_time = 30  # seconds, to reset the syn packet information in memory
-max_arp_request_in_memory = 3  # max number of arp request packets stored in memory
+max_arp_request_in_memory = 6  # max number of arp request packets stored in memory
 reset_udp_memory_time = 30  # seconds, to reset the collected udp packets information
 ps_time_check = 30  # seconds, change only if you know what you are doing
+
+
+"""
+ARP table configuration
+"""
+
+global_arp_table = {}
+
+num_arp_spoof_packet = 0
+# the number of arp spoof packet within the last set time
+
+
+local_arp_table_file = "arp_table.json"
+
+
+# function to configure a local arp table for the ids
+def configure_arp_table():
+    # creating the arp table dictionary
+    arp_table = {}
+
+    try:
+        with open(local_arp_table_file, "r") as f:
+
+            print("ARP table found, copying ARP table...")
+
+            json_arp_table = json.load(f)
+            arp_table = json_arp_table.copy()
+
+    except:
+        print("ARP table not found, creating ARP table...")
+
+        generated_arp_table = collect_arp_table_info()
+        arp_table = generated_arp_table.copy()
+
+    write_arp_table(arp_table, local_arp_table_file)
+    configure_global_arp_table(arp_table)
+    print("ARP table configured.")
+
+
+# copies the arp table to a global function for other functions in the ids to use
+def configure_global_arp_table(arp_table):
+
+    for arp_ip in arp_table:
+        global_arp_table[arp_ip] = arp_table[arp_ip]
+
+
+# sends arp request packets to all possible ips in the network to get mac addresses of devices in the network
+# returns the arp table as a dictionary
+def collect_arp_table_info():
+
+    dictionary = {}
+
+    PACKETS_SENT_PER_ROUND = 10
+    MAX_VALUE_IPV4 = 254  # 255 is broadcast
+
+    gateway_ip = scp.conf.route.route("0.0.0.0")[2]
+    split_gateway_ip = gateway_ip.rsplit(".", 1)
+    # right to left split, splits the first one (aka splits the last delimiter ".")
+    # to get xxx.xxx.xxx and xxx
+    packet_array = []
+
+    for i in range(1, MAX_VALUE_IPV4 + 1):
+        ip = split_gateway_ip[0] + "." + str(i)
+        arp_request_broadcast = scp.Ether(dst="ff:ff:ff:ff:ff:ff") / scp.ARP(pdst=ip)
+        packet_array.append(arp_request_broadcast)
+
+        if (
+            len(packet_array) >= PACKETS_SENT_PER_ROUND
+            or MAX_VALUE_IPV4 - i < PACKETS_SENT_PER_ROUND
+        ):
+            answered_list = scp.srp(packet_array, timeout=0.5, verbose=False)[0]
+            packet_array.clear()
+
+            for answer in answered_list:
+                ip = answer[1].getlayer(scp.ARP).psrc
+                mac = answer[1].getlayer(scp.ARP).hwsrc
+                dictionary[ip] = mac
+
+    return dictionary
+
+
+# writing arp table into local file
+def write_arp_table(arp_table, file_name):
+    with open(file_name, "w") as f:
+        json.dump(arp_table, f)
+
+
+# updates the arp table every 30 seconds (as set) by sending arp request packets to all possible ips in the network again
+def update_arp_table():
+    while True:
+        time.sleep(30)
+
+        updated_arp_table = collect_arp_table_info()
+
+        while True:
+
+            if num_arp_spoof_packet == 0:
+                configure_global_arp_table(updated_arp_table)
+                write_arp_table(global_arp_table, local_arp_table_file)
+                break
+
+            time.sleep(5)
+
+
+update_arp_table_thread = threading.Thread(target=update_arp_table)
 
 """
 GLOBAL FUNCTIONS
@@ -39,6 +145,27 @@ def logging(msg, file_name="ids_logs.txt"):
 
 def caught_error_logs(msg, file_name="ids_caught_errors.txt"):
     logging("ERROR: " + msg, file_name)
+
+
+def detect_attack_logs(attack_type, attacker_mac, target_mac, file_name="ids_logs.txt"):
+    attack_ip = find_ip_from_mac(attacker_mac)
+    target_ip = find_ip_from_mac(target_mac)
+
+    logging(
+        "WARNING: "
+        + attack_type
+        + " detected from "
+        + attacker_mac
+        + " ("
+        + attack_ip
+        + ")"
+        + " targeting "
+        + target_mac
+        + " ("
+        + target_ip
+        + ")",
+        file_name,
+    )
 
 
 def tcp_flag_filter(packet, flag):
@@ -115,6 +242,18 @@ def unique_port_organizer(
     if src_or_dst_port[1]:
         if packet.dport not in dictionary[interaction_name]["d_port"]:
             dictionary[interaction_name]["d_port"].append(packet.dport)
+
+
+def find_ip_from_mac(mac_address):
+    ip = "UNKNOWN"
+
+    for arp_ip in global_arp_table:
+
+        if mac_address == global_arp_table[arp_ip]:
+            ip = arp_ip
+            break
+
+    return ip
 
 
 """
@@ -272,7 +411,7 @@ def log_success_handshake(packet):
 # for logging a synflood
 def log_synflood(src, dst):
     if verbose >= 0:
-        logging("WARNING: SYN flood detected by " + src + " targeting " + dst)
+        detect_attack_logs("SYN flood", src, dst)
 
 
 """
@@ -325,12 +464,7 @@ def port_scan_detector():
                 ):
 
                     if verbose >= 0:
-                        logging(
-                            "WARNING: Portscan detected by "
-                            + mac_ad[0]
-                            + " targeting "
-                            + mac_ad[1],
-                        )
+                        detect_attack_logs("Port scan", mac_ad[0], mac_ad[1])
 
             reset_unique_port()
     except KeyboardInterrupt as e:
@@ -462,12 +596,7 @@ def udpflood_detector():
                 if interaction_icmp_pkt_count[interaction_name] >= udp_threshold:
 
                     if verbose >= 0:
-                        logging(
-                            "WARNING: UDP flood detected by "
-                            + mac_ad[0]
-                            + " targeting "
-                            + mac_ad[1]
-                        )
+                        detect_attack_logs("UDP flood", mac_ad[0], mac_ad[1])
 
                     # when a udp flood is detected, it will queue a udp_pkts_info_memory reset
                     reset_udp_pkts_info_memory = True
@@ -498,16 +627,6 @@ ARP SPOOFING DETECTOR
 """
 
 arp_request_memory = {}
-arp_table = {}
-# TODO: take arp table from file
-# TODO: configure own local arp table
-# TODO: add self configured arp table to local use
-
-
-# writing arp table into local file
-def write_arp_table(file_name="arp_table.txt"):
-    with open(file_name, "w") as f:
-        f.write(str(arp_table))
 
 
 # main function for arp spoof detection
@@ -521,7 +640,10 @@ def arp_spoof_processor(packet):
 
     # op = 1 is request packet
     if arp_op == 1:
-        store_arp_request(packet)
+        store_arp_request_thread = threading.Thread(
+            target=store_arp_request, args=(packet,)
+        )
+        store_arp_request_thread.start()
 
     # op =2 is reply packet
     if arp_op == 2:
@@ -530,22 +652,11 @@ def arp_spoof_processor(packet):
         # True if a reply matches a request, False if not
         is_valid_reply = arp_reply(packet)
 
-        ip = packet.getlayer(scp.ARP).psrc
-        mac_address = packet.getlayer(scp.ARP).hwsrc
-
-        if is_valid_reply:
-
-            # returns True if valid arp reply packet changes the arp table
-            is_modified = update_arp_table(ip, mac_address)
-
-            if is_modified:
-                if verbose >= 1:
-                    logging(
-                        "ARP table has been modified, " + ip + " is at " + mac_address
-                    )
-
         # process for invalid replies (reply without matching request)
-        else:
+        if not is_valid_reply:
+
+            ip = packet.getlayer(scp.ARP).psrc
+            mac_address = packet.getlayer(scp.ARP).hwsrc
 
             # checking whether invalid packet matches current arp table (ignores invalid reply if its the same)
             not_spoof_packet = check_arp_table(ip, mac_address)
@@ -553,28 +664,21 @@ def arp_spoof_processor(packet):
             # if invalid reply doesn't match arp table, calls as arp spoof packet
             if not not_spoof_packet:
                 arp_spoof_logger(packet)
-
-    # clearing arp requests in memory when it reaches maximum memory
-    arp_request_in_memory = 0
-    arp_request_src_in_memory = 0
-
-    for arp_request in arp_request_memory:
-        arp_request_in_memory += len(
-            arp_request_memory[arp_request][
-                next(iter(arp_request_memory[arp_request].keys()))
-            ]
-        )
-
-    arp_request_src_in_memory += len(arp_request_memory)
-
-    if (
-        arp_request_in_memory >= max_arp_request_in_memory
-        or arp_request_src_in_memory >= max_arp_request_in_memory
-    ):
-        arp_request_memory.clear()
+                mark_arp_spoof_thread = threading.Thread(
+                    target=mark_arp_spoof, args=(5,)
+                )
+                mark_arp_spoof_thread.start()
 
 
-# stores arp requests packets to memory
+def mark_arp_spoof(time_between):
+    global num_arp_spoof_packet
+
+    num_arp_spoof_packet += 1
+    time.sleep(time_between)
+    num_arp_spoof_packet -= 1
+
+
+# stores arp requests packets to memory for two second
 def store_arp_request(packet):
     request_psrc = packet.getlayer(scp.ARP).psrc  # ip of source/requester
     request_hwsrc = packet.getlayer(scp.ARP).hwsrc  # mac address of source/requester
@@ -586,6 +690,13 @@ def store_arp_request(packet):
 
     arp_request_memory[request_psrc]["request_to"].append(request_pdst)
     arp_request_memory[request_psrc]["src_mac"].append(request_hwsrc)
+
+    time.sleep(2)
+
+    for i, pdst in enumerate(arp_request_memory[request_psrc]["request_to"]):
+        if request_pdst == pdst:
+            del arp_request_memory[request_psrc]["request_to"][i]
+            del arp_request_memory[request_psrc]["src_mac"][i]
 
 
 # takes arp reply packet to cross-check request packet with memory, returns True if matching request packet is found/reply is valid
@@ -621,41 +732,26 @@ def arp_reply(packet):
     return is_valid_reply
 
 
-# updates arp table with ip and mac_address, returns True if there were any changes, False if the information remained the same
-# TODO: remove if we have a self configured arp table
-def update_arp_table(ip, mac_address):
-
-    arp_table_is_modified = False
-
-    if ip in arp_table:
-
-        if arp_table[ip] == mac_address:
-            return arp_table_is_modified
-
-        arp_table_is_modified = True
-
-    arp_table[ip] = mac_address
-
-    # save arp table to local
-    write_arp_table()
-
-    return arp_table_is_modified
-
-
 # checking whether an ip and mac address matches information inside arp table, returns False if it doesnt match
+# only runs when invalid arp packets are found
 def check_arp_table(ip, mac_address):
-
     matches_arp_table = False
     # False means the ip and mac address doesnt match the arp table (its a spoofed packet)
     # True means the ip and mac address matches the arp table (its a safe invalid packet)
 
-    for arp_ip in arp_table:
+    global num_arp_spoof_packet
+    num_arp_spoof_packet += 1
+    # adds a value to the arp spoof packet to stop global_arp_table from updating while function is running
+
+    for arp_ip in global_arp_table:
 
         if not ip == arp_ip:
             continue
 
-        if arp_table[arp_ip] == mac_address:
+        if global_arp_table[arp_ip] == mac_address:
             matches_arp_table = True
+
+    num_arp_spoof_packet -= 1
 
     return matches_arp_table
 
@@ -666,12 +762,7 @@ def arp_spoof_logger(packet):
     target = packet.dst
 
     if verbose >= 0:
-        logging(
-            "WARNING: Spoofed ARP packet detected by "
-            + attacker
-            + " targeting "
-            + target
-        )
+        detect_attack_logs("ARP spoofing", attacker, target)
 
 
 """
@@ -690,7 +781,7 @@ def dns_amp_processor(packet):
 
     if packet.haslayer(scp.DNS):
         if packet.getlayer(scp.DNS).qr == 0:
-            if check_spoof_dns_query(packet, arp_table):
+            if check_spoof_dns_query(packet, global_arp_table):
                 update_dns_amp_target_and_attacker(packet)
 
     # dns response packets
@@ -733,12 +824,7 @@ def dns_amp_logger(packet, attacker):
         if attacker:
             source = attacker
 
-        logging(
-            "WARNING: DNS Amplification detected by "
-            + source
-            + " targeting "
-            + packet.dst
-        )
+        detect_attack_logs("DNS amplification", source, packet.dst)
 
 
 def check_spoof_dns_query(packet, arp_table):
@@ -778,6 +864,8 @@ def processor(packet):
 
 
 if __name__ == "__main__":
+    configure_arp_table()
+    update_arp_table_thread.start()
     reset_syn_memory_timer_thread.start()
     port_scan_detector_thread.start()
     udpflood_detector_thread.start()
