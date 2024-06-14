@@ -4,7 +4,9 @@ import threading
 import time
 import json
 
-
+"""
+GLOBAL VARIABLES
+"""
 # Users can adjust these values
 SYNFLOOD_THRESHOLD = 100  # minimum amount of missing packets in the period of syn_time_check to alert detection of SYN flood (Higher means less sensitive)
 UDPFLOOD_THRESHOLD = 100  # minimum amount of ICMP packets in response to UDP packets in the peroid of udp_time_check to alert UDP flood (higher means less sensitive)
@@ -260,7 +262,7 @@ synflood_memory_resettable = True
 interaction_synflood_memory = {}
 
 
-# main processor and function caller for synflood detector
+# main processor and function to create the synflood memory
 def synflood_processor(packet):
 
     if tcp_flag_filter(packet, "S"):
@@ -286,6 +288,7 @@ def update_interaction_synflood_memory(packet, is_SA_flag=False):
     src_mac_ad = packet.src
     dst_mac_ad = packet.dst
 
+    # if the tcp packet has SA flag, the dst and src will be flipped
     if is_SA_flag:
         src_ip = packet.getlayer(scp.IP).dst
         dst_ip = packet.getlayer(scp.IP).src
@@ -318,6 +321,7 @@ def check_ack_number(packet, is_SA_flag=False):
     src_mac_ad = packet.src
     dst_mac_ad = packet.dst
 
+    # if the tcp packet has SA flag, the dst and src will be flipped
     if is_SA_flag:
         src_ip = packet.getlayer(scp.IP).dst
         dst_ip = packet.getlayer(scp.IP).src
@@ -372,7 +376,6 @@ def reset_synflood_memory():
 
 
 # detects if interactions have syn packets without acknowledgement that exceeds threshold
-# returns True (if exceeds threshold), source_of_interaction, destination_of_interaction
 def synflood_detector():
     while True:
         time.sleep(TIME_CHECK)
@@ -403,6 +406,7 @@ def synflood_detector():
 synflood_detector_thread = threading.Thread(target=synflood_detector)
 
 
+# resets the synflood memory
 def synflood_memory_resetter():
     while True:
         time.sleep(MEMORY_RESET_TIME)
@@ -455,6 +459,7 @@ def port_scan_processor(packet):
     )  # only taking src port
 
 
+# detects for port scanning attack
 def port_scan_detector():
     try:
 
@@ -507,6 +512,7 @@ def port_scan_detector():
 port_scan_detector_thread = threading.Thread(target=port_scan_detector)
 
 
+# to reset t he port scanning information memory
 def accessing_port_info_resetter():
     while True:
         time.sleep(MEMORY_RESET_TIME)
@@ -665,6 +671,7 @@ def udpflood_detector():
 udpflood_detector_thread = threading.Thread(target=udpflood_detector)
 
 
+# to reset the udpflood memory
 def udpflood_memory_resetter():
     while True:
         time.sleep(MEMORY_RESET_TIME)
@@ -921,11 +928,7 @@ def processor(packet):
     dns_amp_processor(packet)
 
 
-if __name__ == "__main__":
-    # arp table
-    configure_arp_table()
-    update_arp_table_thread.start()
-
+def detection_thread_starter():
     # synflood
     synflood_detector_thread.start()
     synflood_memory_resetter_thread.start()
@@ -937,5 +940,13 @@ if __name__ == "__main__":
     # udp flood
     udpflood_detector_thread.start()
     udpflood_memory_resetter_thread.start()
+
+
+if __name__ == "__main__":
+    # arp table
+    configure_arp_table()
+    update_arp_table_thread.start()
+
+    detection_thread_starter()
 
     scp.sniff(prn=processor)
