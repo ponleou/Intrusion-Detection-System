@@ -23,9 +23,12 @@ verbose = 0  # log levels
 
 
 # Users can adjust with caution (affects the effectiveness of the detection)
+CHECK_RESETTABLE = 0.5  # seconds
 reset_syn_memory_time = 30  # seconds, to reset the syn packet information in memory
 max_arp_request_in_memory = 6  # max number of arp request packets stored in memory
-reset_udp_memory_time = 30  # seconds, to reset the collected udp packets information
+reset_udp_flood_memory_time = (
+    30  # seconds, to reset the collected udp packets information
+)
 reset_portscan_count_time = 30
 ps_time_check = 2  # seconds to check the count of portscan port accessed
 # FIXME: combine all time check time check
@@ -450,6 +453,7 @@ def port_scan_detector():
             time.sleep(ps_time_check)
 
             accessing_port_info_resetable = False
+            port_scan_detected = False
 
             for interaction_name in unique_interaction_accessing_port:
 
@@ -478,9 +482,12 @@ def port_scan_detector():
                     if verbose >= 0:
                         detect_attack_logs("Port scan", mac_ad[0], mac_ad[1])
 
-                    reset_accessing_port_info()
+                    port_scan_detected = True
 
             accessing_port_info_resetable = True
+
+            if port_scan_detected:
+                reset_accessing_port_info()
 
     except KeyboardInterrupt as e:
         print(str(e) + ": Stopping port_scan_detector loop...")
@@ -499,7 +506,7 @@ def accessing_port_info_resetter():
                 reset_accessing_port_info()
                 break
 
-            time.sleep(1)
+            time.sleep(CHECK_RESETTABLE)
 
 
 accessing_port_info_resetter_thread = threading.Thread(
@@ -610,11 +617,13 @@ def udpflood_detector():
     # counts the number of times udpflood is not detected after every udp_time_check
     # if it exceeds a certain amount, it will reset the udp_pkts_info_memory and interaction_icmp_pkt_count
     try:
+        global udp_flood_memory_resettable
+
         while True:
             time.sleep(udp_time_check)
 
             udp_flood_memory_resettable = False
-            reset_udp_pkts_info_memory = False
+            udp_flood_detected = False
 
             for interaction_name in interaction_icmp_pkt_count:
                 mac_ad = interaction_name.split(", ")
@@ -635,28 +644,48 @@ def udpflood_detector():
                         detect_attack_logs("UDP flood", mac_ad[0], mac_ad[1])
 
                     # when a udp flood is detected, it will queue a udp_pkts_info_memory reset
-                    reset_udp_pkts_info_memory = True
+                    udp_flood_detected = True
 
-            # runs if no udpflood is detected
-            no_udpflood_detected_counter += 1
+            udp_flood_memory_resettable = True
 
-            # the max value for no_udpflood_detected_counter to initiate a force_reset_udp_pkts_info_memory
-            # calculation makes it so that force_reset_udp_pkts_info_memory happens every reset_udp_memory_time
-            max_counter = reset_udp_memory_time / udp_time_check
-
-            if (
-                reset_udp_pkts_info_memory
-                or no_udpflood_detected_counter >= max_counter
-            ):
-                no_udpflood_detected_counter = 0
+            if udp_flood_detected:
                 reset_udp_flood_memory()
+            # # runs if no udpflood is detected
+            # no_udpflood_detected_counter += 1
 
-            interaction_icmp_pkt_count.clear()
+            # # the max value for no_udpflood_detected_counter to initiate a force_reset_udp_pkts_info_memory
+            # # calculation makes it so that force_reset_udp_pkts_info_memory happens every reset_udp_memory_time
+            # max_counter = reset_udp_memory_time / udp_time_check
+
+            # if (
+            #     reset_udp_pkts_info_memory
+            #     or no_udpflood_detected_counter >= max_counter
+            # ):
+            #     no_udpflood_detected_counter = 0
+            #     reset_udp_flood_memory()
+
+            # interaction_icmp_pkt_count.clear()
     except KeyboardInterrupt as e:
         print(str(e) + ": Stopping udpflood_detector loop...")
 
 
 udpflood_detector_thread = threading.Thread(target=udpflood_detector)
+
+
+def udp_flood_memory_resetter():
+    while True:
+        time.sleep(reset_udp_flood_memory_time)
+
+        while True:
+
+            if udp_flood_memory_resettable:
+                reset_udp_flood_memory()
+                break
+
+            time.sleep(CHECK_RESETTABLE)
+
+
+udp_flood_memory_resetter_thread = threading.Thread(target=udp_flood_memory_resetter)
 
 """
 ARP SPOOFING DETECTOR
@@ -906,4 +935,5 @@ if __name__ == "__main__":
     port_scan_detector_thread.start()
     accessing_port_info_resetter_thread.start()
     udpflood_detector_thread.start()
+    udp_flood_memory_resetter_thread.start()
     scp.sniff(prn=processor)
