@@ -13,7 +13,7 @@ UDPFLOOD_THRESHOLD = 100  # minimum amount of ICMP packets in response to UDP pa
 PORT_SCAN_THRESHOLD = 50  # minimum amount of unique accessed ports to alert port scan (higher means less sentitive)
 DNS_AMP_THRESHOLD = 500  # minimum bytes a dns response packet size can be to trigger detector (higher means less sensitive)
 
-TIME_CHECK = 2  # seconds for detection check (lower time means less sensitive) for SYNFLOOD, UDPFLOOD and Port scan
+TIME_CHECK = 0.2  # seconds for detection check (lower time means less sensitive) for SYNFLOOD, UDPFLOOD and Port scan
 
 VERBOSE = 0  # log levels
 # from 0 to 1
