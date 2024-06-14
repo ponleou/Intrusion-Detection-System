@@ -24,14 +24,16 @@ verbose = 0  # log levels
 
 # Users can adjust with caution (affects the effectiveness of the detection)
 CHECK_RESETTABLE = 0.5  # seconds
-reset_syn_memory_time = 30  # seconds, to reset the syn packet information in memory
+reset_synflood_memory_time = (
+    30  # seconds, to reset the syn packet information in memory
+)
 reset_udp_flood_memory_time = (
     30  # seconds, to reset the collected udp packets information
 )
 reset_portscan_count_time = 30
 ps_time_check = 2  # seconds to check the count of portscan port accessed
 # FIXME: combine all time check time check
-
+SYNFLOOD_TIME_CHECK = 2
 
 """
 ARP table configuration
@@ -263,8 +265,8 @@ def find_ip_from_mac(mac_address):
 """
 SYN FLOOD DETECTOR
 """
-reset_syn_memory = False
-interaction_missing_packets = {}
+
+synflood_memory_resettable = True
 interaction_syn_memory = {}
 
 
@@ -284,14 +286,14 @@ def synflood_processor(packet):
         if check_ack_number(packet):
             log_success_handshake(packet)
 
-    # checking and logging for synflood attack
-    synflood_detected, synflood_src, synflood_dst = synflood_detector()
-    if synflood_detected:
-        log_synflood(synflood_src, synflood_dst)
-        force_reset_syn_memory()
+    # # checking and logging for synflood attack
+    # synflood_detected, synflood_src, synflood_dst = synflood_detector()
+    # if synflood_detected:
+    #     log_synflood(synflood_src, synflood_dst)
+    #     force_reset_syn_memory()
 
-    # call the process to clear the interaction_syn_memory dictionary
-    reset_syn_memory_process()
+    # # call the process to clear the interaction_syn_memory dictionary
+    # reset_syn_memory_process()
 
 
 # update any incoming syn packet information to interaction_syn_memory dictionary
@@ -318,31 +320,31 @@ def update_interaction_syn_memory(packet):
 
 
 # will reset interaction_syn_memory dictionary when reset_syn_memory is True
-def reset_syn_memory_process():
-    global reset_syn_memory
+# def reset_syn_memory_process():
+#     global reset_syn_memory
 
-    if reset_syn_memory:
-        interaction_syn_memory.clear()
-        reset_syn_memory = False
+#     if reset_syn_memory:
+#         interaction_syn_memory.clear()
+#         reset_syn_memory = False
 
 
 # runs a countdown timer in a different thread to change reset_syn_memory to True
-def reset_syn_memory_timer():
-    try:
-        while True:
-            time.sleep(reset_syn_memory_time)
-            force_reset_syn_memory()
-    except KeyboardInterrupt as e:
-        print(str(e) + ": Stopping reset_syn_memory_timer loop...")
+# def reset_syn_memory_timer():
+#     try:
+#         while True:
+#             time.sleep(reset_syn_memory_time)
+#             force_reset_syn_memory()
+#     except KeyboardInterrupt as e:
+#         print(str(e) + ": Stopping reset_syn_memory_timer loop...")
 
 
-reset_syn_memory_timer_thread = threading.Thread(target=reset_syn_memory_timer)
+# reset_syn_memory_timer_thread = threading.Thread(target=reset_syn_memory_timer)
 
 
 # changes reset_syn_memory to True
-def force_reset_syn_memory():
-    global reset_syn_memory
-    reset_syn_memory = True
+# def force_reset_syn_memory():
+#     global reset_syn_memory
+#     reset_syn_memory = True
 
 
 # checking if the packet's ack is found in the interaction_syn_memory dictionary
@@ -391,20 +393,56 @@ def check_ack_number(packet):
     return is_valid_ack
 
 
+def reset_synflood_memory():
+    interaction_syn_memory.clear()
+
+
 # detects if interactions have syn packets without acknowledgement that exceeds threshold
 # returns True (if exceeds threshold), source_of_interaction, destination_of_interaction
 def synflood_detector():
-    synflood_detected = False, "", ""
+    while True:
+        time.sleep(SYNFLOOD_TIME_CHECK)
 
-    for interaction_name in interaction_syn_memory:
-        if (
-            len(interaction_syn_memory[interaction_name]["seq_num"])
-            >= SYNFLOOD_THRESHOLD
-        ):
-            src_and_dst = interaction_name.split(", ")
-            synflood_detected = True, src_and_dst[0], src_and_dst[1]
+        global synflood_memory_resettable
+        synflood_memory_resettable = False
 
-    return synflood_detected
+        synflood_detected = False
+
+        for interaction_name in interaction_syn_memory:
+            if (
+                len(interaction_syn_memory[interaction_name]["seq_num"])
+                >= SYNFLOOD_THRESHOLD
+            ):
+                synflood_detected = True
+
+                src_and_dst = interaction_name.split(", ")
+                synflood_src = src_and_dst[0]
+                synflood_dst = src_and_dst[1]
+                log_synflood(synflood_src, synflood_dst)
+
+        if synflood_detected:
+            reset_synflood_memory()
+
+        synflood_memory_resettable = True
+
+
+synflood_detector_thread = threading.Thread(target=synflood_detector)
+
+
+def synflood_memory_resetter():
+    while True:
+        time.sleep(reset_synflood_memory_time)
+
+        while True:
+
+            if synflood_memory_resettable:
+                reset_synflood_memory()
+                break
+
+            time.sleep(CHECK_RESETTABLE)
+
+
+synflood_memory_resetter_thread = threading.Thread(target=synflood_memory_resetter)
 
 
 # for logging a successful tcp handshake
@@ -928,11 +966,20 @@ def processor(packet):
 
 
 if __name__ == "__main__":
+    # arp table
     configure_arp_table()
     update_arp_table_thread.start()
-    reset_syn_memory_timer_thread.start()
+
+    # synflood
+    synflood_detector_thread.start()
+    synflood_memory_resetter_thread.start()
+
+    # port scan
     port_scan_detector_thread.start()
     accessing_port_info_resetter_thread.start()
+
+    # udp flood
     udpflood_detector_thread.start()
     udp_flood_memory_resetter_thread.start()
+
     scp.sniff(prn=processor)
