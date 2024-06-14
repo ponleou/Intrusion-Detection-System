@@ -6,14 +6,14 @@ import json
 
 
 # Users can adjust these values
-syn_threshold = 100  # minimum amount of missing packets in the period of syn_time_check to alert detection of SYN flood (Higher means less sensitive)
+SYNFLOOD_THRESHOLD = 100  # minimum amount of missing packets in the period of syn_time_check to alert detection of SYN flood (Higher means less sensitive)
 
-ps_threshold = 50  # minimum amount of unique accessed ports to alert port scan (higher means less sentitive)
+PORT_SCAN_THRESHOLD = 50  # minimum amount of unique accessed ports to alert port scan (higher means less sentitive)
 
 udp_time_check = 5  # seconds for each UDP flood check (lower time means less sensitive)
-udp_threshold = 100  # minimum amount of ICMP packets in response to UDP packets in the peroid of udp_time_check to alert UDP flood (higher means less sensitive)
+UDPFLOOD_THRESHOLD = 100  # minimum amount of ICMP packets in response to UDP packets in the peroid of udp_time_check to alert UDP flood (higher means less sensitive)
 
-da_threshold = 500  # minimum bytes a dns response packet size can be to trigger detector (higher means less sensitive)
+DNS_AMP_THRESHOLD = 500  # minimum bytes a dns response packet size can be to trigger detector (higher means less sensitive)
 
 verbose = 0  # log levels
 # from 0 to 1
@@ -26,7 +26,9 @@ verbose = 0  # log levels
 reset_syn_memory_time = 30  # seconds, to reset the syn packet information in memory
 max_arp_request_in_memory = 6  # max number of arp request packets stored in memory
 reset_udp_memory_time = 30  # seconds, to reset the collected udp packets information
+reset_portscan_count_time = 30
 ps_time_check = 30  # seconds, change only if you know what you are doing
+# FIXME: remove ps time check
 
 
 """
@@ -393,7 +395,10 @@ def synflood_detector():
     synflood_detected = False, "", ""
 
     for interaction_name in interaction_syn_memory:
-        if len(interaction_syn_memory[interaction_name]["seq_num"]) >= syn_threshold:
+        if (
+            len(interaction_syn_memory[interaction_name]["seq_num"])
+            >= SYNFLOOD_THRESHOLD
+        ):
             src_and_dst = interaction_name.split(", ")
             synflood_detected = True, src_and_dst[0], src_and_dst[1]
 
@@ -460,7 +465,7 @@ def port_scan_detector():
 
                 if (
                     len(unique_interaction_accessing_port[interaction_name]["s_port"])
-                    >= ps_threshold
+                    >= PORT_SCAN_THRESHOLD
                 ):
 
                     if verbose >= 0:
@@ -593,7 +598,7 @@ def udpflood_detector():
                         + mac_ad[0]
                     )
 
-                if interaction_icmp_pkt_count[interaction_name] >= udp_threshold:
+                if interaction_icmp_pkt_count[interaction_name] >= UDPFLOOD_THRESHOLD:
 
                     if verbose >= 0:
                         detect_attack_logs("UDP flood", mac_ad[0], mac_ad[1])
@@ -786,7 +791,7 @@ def dns_amp_processor(packet):
 
     # dns response packets
     if packet.getlayer(scp.UDP).sport == 53:
-        if packet.len >= da_threshold:
+        if packet.len >= DNS_AMP_THRESHOLD:
             attacker = get_dns_amp_attacker(packet)
             dns_amp_logger(packet, attacker)
 
