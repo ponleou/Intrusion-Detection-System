@@ -27,8 +27,8 @@ reset_syn_memory_time = 30  # seconds, to reset the syn packet information in me
 max_arp_request_in_memory = 6  # max number of arp request packets stored in memory
 reset_udp_memory_time = 30  # seconds, to reset the collected udp packets information
 reset_portscan_count_time = 30
-ps_time_check = 30  # seconds, change only if you know what you are doing
-# FIXME: remove ps time check
+ps_time_check = 2  # seconds to check the count of portscan port accessed
+# FIXME: combine all time check time check
 
 
 """
@@ -422,11 +422,13 @@ def log_synflood(src, dst):
 """
 PORT SCAN DETECTOR
 """
+accessing_port_info_resetable = True
+
 # dictionary for holding unique devices and the ports they are accessing (used for port scan)
 unique_interaction_accessing_port = {}
 
 
-def reset_unique_port():
+def reset_accessing_port_info():
     unique_interaction_accessing_port.clear()
 
 
@@ -441,8 +443,13 @@ def port_scan_processor(packet):
 
 def port_scan_detector():
     try:
+
+        global accessing_port_info_resetable
+
         while True:
             time.sleep(ps_time_check)
+
+            accessing_port_info_resetable = False
 
             for interaction_name in unique_interaction_accessing_port:
 
@@ -471,7 +478,10 @@ def port_scan_detector():
                     if verbose >= 0:
                         detect_attack_logs("Port scan", mac_ad[0], mac_ad[1])
 
-            reset_unique_port()
+                    reset_accessing_port_info()
+
+            accessing_port_info_resetable = True
+
     except KeyboardInterrupt as e:
         print(str(e) + ": Stopping port_scan_detector loop...")
 
@@ -479,9 +489,29 @@ def port_scan_detector():
 port_scan_detector_thread = threading.Thread(target=port_scan_detector)
 
 
+def accessing_port_info_resetter():
+    while True:
+        time.sleep(reset_portscan_count_time)
+
+        while True:
+
+            if accessing_port_info_resetable:
+                reset_accessing_port_info()
+                break
+
+            time.sleep(1)
+
+
+accessing_port_info_resetter_thread = threading.Thread(
+    target=accessing_port_info_resetter
+)
+
 """
 UDP FLOOD DETECTOR
 """
+
+udp_flood_memory_resettable = True
+
 udp_pkts_info_memory = {}
 interaction_icmp_pkt_count = {}
 
@@ -568,7 +598,7 @@ def icmp_pkt_counter(interaction_name):
 
 
 # to reset the udp_pkts_info_memory and interaction_icmp_pkt_count
-def force_reset_udp_pkts_info_memory():
+def reset_udp_flood_memory():
     udp_pkts_info_memory.clear()
     interaction_icmp_pkt_count.clear()
 
@@ -583,6 +613,7 @@ def udpflood_detector():
         while True:
             time.sleep(udp_time_check)
 
+            udp_flood_memory_resettable = False
             reset_udp_pkts_info_memory = False
 
             for interaction_name in interaction_icmp_pkt_count:
@@ -618,7 +649,7 @@ def udpflood_detector():
                 or no_udpflood_detected_counter >= max_counter
             ):
                 no_udpflood_detected_counter = 0
-                force_reset_udp_pkts_info_memory()
+                reset_udp_flood_memory()
 
             interaction_icmp_pkt_count.clear()
     except KeyboardInterrupt as e:
@@ -873,5 +904,6 @@ if __name__ == "__main__":
     update_arp_table_thread.start()
     reset_syn_memory_timer_thread.start()
     port_scan_detector_thread.start()
+    accessing_port_info_resetter_thread.start()
     udpflood_detector_thread.start()
     scp.sniff(prn=processor)
