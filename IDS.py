@@ -278,8 +278,9 @@ def synflood_processor(packet):
 
     if tcp_flag_filter(packet, "SA"):
 
-        if check_ack_number(packet):
-            update_interaction_syn_memory(packet)
+        if check_ack_number(packet, True):
+
+            update_interaction_syn_memory(packet, True)
 
     if tcp_flag_filter(packet, "A"):
 
@@ -297,13 +298,20 @@ def synflood_processor(packet):
 
 
 # update any incoming syn packet information to interaction_syn_memory dictionary
-def update_interaction_syn_memory(packet):
+def update_interaction_syn_memory(packet, is_SA_flag=False):
 
     src_ip = packet.getlayer(scp.IP).src
     dst_ip = packet.getlayer(scp.IP).dst
-    packet_seq = packet.getlayer(scp.TCP).seq
     src_mac_ad = packet.src
     dst_mac_ad = packet.dst
+
+    if is_SA_flag:
+        src_ip = packet.getlayer(scp.IP).dst
+        dst_ip = packet.getlayer(scp.IP).src
+        src_mac_ad = packet.dst
+        dst_mac_ad = packet.src
+
+    packet_seq = packet.getlayer(scp.TCP).seq
 
     interaction_name = src_mac_ad + ", " + dst_mac_ad
 
@@ -349,19 +357,26 @@ def update_interaction_syn_memory(packet):
 
 # checking if the packet's ack is found in the interaction_syn_memory dictionary
 # returns True if matching packet is found
-def check_ack_number(packet):
+def check_ack_number(packet, is_SA_flag=False):
     is_valid_ack = False
 
     src_ip = packet.getlayer(scp.IP).src
     dst_ip = packet.getlayer(scp.IP).dst
-    packet_ack = packet.getlayer(scp.TCP).ack
     src_mac_ad = packet.src
     dst_mac_ad = packet.dst
+
+    if is_SA_flag:
+        src_ip = packet.getlayer(scp.IP).dst
+        dst_ip = packet.getlayer(scp.IP).src
+        src_mac_ad = packet.dst
+        dst_mac_ad = packet.src
+
+    packet_ack = packet.getlayer(scp.TCP).ack
 
     # matching sequence and acknowledgement number is sequence_number + 1 = acknowledgement_number
     matching_seq = packet_ack - 1
 
-    interaction_name = dst_mac_ad + ", " + src_mac_ad
+    interaction_name = src_mac_ad + ", " + dst_mac_ad
 
     for syn_interaction_name in interaction_syn_memory:
 
@@ -375,10 +390,10 @@ def check_ack_number(packet):
             if not seq_num == matching_seq:
                 continue
 
-            if not interaction_syn_memory[syn_interaction_name]["src_ip"][i] == dst_ip:
+            if not interaction_syn_memory[syn_interaction_name]["src_ip"][i] == src_ip:
                 continue
 
-            if not interaction_syn_memory[syn_interaction_name]["dst_ip"][i] == src_ip:
+            if not interaction_syn_memory[syn_interaction_name]["dst_ip"][i] == dst_ip:
                 continue
 
             # deletes the syn packet information if a matching ack packet is found
