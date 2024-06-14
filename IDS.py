@@ -25,7 +25,6 @@ verbose = 0  # log levels
 # Users can adjust with caution (affects the effectiveness of the detection)
 CHECK_RESETTABLE = 0.5  # seconds
 reset_syn_memory_time = 30  # seconds, to reset the syn packet information in memory
-max_arp_request_in_memory = 6  # max number of arp request packets stored in memory
 reset_udp_flood_memory_time = (
     30  # seconds, to reset the collected udp packets information
 )
