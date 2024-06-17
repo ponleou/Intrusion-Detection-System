@@ -1,6 +1,6 @@
 import scapy.all as scp
 from datetime import datetime
-import threading
+from threading import Thread
 import time
 import json
 
@@ -8,12 +8,13 @@ import json
 GLOBAL VARIABLES
 """
 # Users can adjust these values
-SYNFLOOD_THRESHOLD = 100  # minimum number of missing packets in the period of MEMORY_RESET_TIME to alert detection of SYN flood (Higher means less sensitive)
+SYNFLOOD_THRESHOLD = 100  # minimum number of missing packets in the period of MEMORY_RESET_TIME to alert detection of SYN flood (higher means less sensitive)
 UDPFLOOD_THRESHOLD = 100  # minimum number of ICMP packets in response to UDP packets in the peroid of MEMORY_RESET_TIME to alert UDP flood (higher means less sensitive)
 PORT_SCAN_THRESHOLD = 50  # minimum number of unique accessed ports to alert port scan (higher means less sentitive)
-DNS_AMP_THRESHOLD = 500  # minimum bytes a dns response packet size can be to trigger detector (higher means less sensitive)
+DNS_AMP_THRESHOLD = 5  # minimum number of DNS amplification packets in the peroid of MEMORY_RESET_TIME to trigger detection (higher means less sensitive)
+DNS_REPLY_BYTE_THRESHOLD = 500  # minimum bytes a dns response packet size can be to trigger detector (higher means less sensitive)
 
-TIME_CHECK = 0.2  # seconds for detection check (lower time means less sensitive) for SYNFLOOD, UDPFLOOD and Port scan
+TIME_CHECK = 0.2  # seconds for detection check (lower time means less sensitive)
 
 VERBOSE = 0  # log levels
 # from 0 to 1
@@ -23,6 +24,7 @@ VERBOSE = 0  # log levels
 
 
 # Users can adjust with caution (affects the effectiveness and performance of the detection)
+ARP_SPOOF_THRESHOLD = 1  # minimum number of arp spoofing packets in the period of MEMORY_RESET_TIME to trigger detection of arp spoofing (higher means less sensitive)
 MEMORY_RESET_TIME = 30  # seconds to reset the detection memory of packets
 CHECK_RESETTABLE = 0.5  # seconds to check if a detection memory is able to reset
 
@@ -129,7 +131,7 @@ def update_arp_table():
             time.sleep(5)
 
 
-update_arp_table_thread = threading.Thread(target=update_arp_table)
+update_arp_table_thread = Thread(target=update_arp_table)
 
 """
 GLOBAL FUNCTIONS
@@ -386,16 +388,32 @@ def synflood_detector():
         synflood_detected = False
 
         for interaction_name in interaction_synflood_memory:
+            src_and_dst = interaction_name.split(", ")
+            synflood_src = src_and_dst[0]
+            synflood_dst = src_and_dst[1]
+
             if (
                 len(interaction_synflood_memory[interaction_name]["seq_num"])
                 >= SYNFLOOD_THRESHOLD
             ):
+
                 synflood_detected = True
 
-                src_and_dst = interaction_name.split(", ")
-                synflood_src = src_and_dst[0]
-                synflood_dst = src_and_dst[1]
                 log_synflood(synflood_src, synflood_dst)
+
+            if len(interaction_synflood_memory[interaction_name]["seq_num"]) > 0:
+                if VERBOSE >= 1:
+                    logging(
+                        str(
+                            len(
+                                interaction_synflood_memory[interaction_name]["seq_num"]
+                            )
+                        )
+                        + " SYN packets from "
+                        + synflood_src
+                        + " without ACK reply from "
+                        + synflood_dst
+                    )
 
         if synflood_detected:
             reset_synflood_memory()
@@ -403,7 +421,7 @@ def synflood_detector():
         synflood_memory_resettable = True
 
 
-synflood_detector_thread = threading.Thread(target=synflood_detector)
+synflood_detector_thread = Thread(target=synflood_detector)
 
 
 # resets the synflood memory
@@ -420,7 +438,7 @@ def synflood_memory_resetter():
             time.sleep(CHECK_RESETTABLE)
 
 
-synflood_memory_resetter_thread = threading.Thread(target=synflood_memory_resetter)
+synflood_memory_resetter_thread = Thread(target=synflood_memory_resetter)
 
 
 # for logging a successful tcp handshake
@@ -509,7 +527,7 @@ def port_scan_detector():
         print(str(e) + ": Stopping port_scan_detector loop...")
 
 
-port_scan_detector_thread = threading.Thread(target=port_scan_detector)
+port_scan_detector_thread = Thread(target=port_scan_detector)
 
 
 # to reset t he port scanning information memory
@@ -526,9 +544,7 @@ def accessing_port_info_resetter():
             time.sleep(CHECK_RESETTABLE)
 
 
-accessing_port_info_resetter_thread = threading.Thread(
-    target=accessing_port_info_resetter
-)
+accessing_port_info_resetter_thread = Thread(target=accessing_port_info_resetter)
 
 """
 UDP FLOOD DETECTOR
@@ -668,7 +684,7 @@ def udpflood_detector():
         print(str(e) + ": Stopping udpflood_detector loop...")
 
 
-udpflood_detector_thread = threading.Thread(target=udpflood_detector)
+udpflood_detector_thread = Thread(target=udpflood_detector)
 
 
 # to reset the udpflood memory
@@ -685,13 +701,15 @@ def udpflood_memory_resetter():
             time.sleep(CHECK_RESETTABLE)
 
 
-udpflood_memory_resetter_thread = threading.Thread(target=udpflood_memory_resetter)
+udpflood_memory_resetter_thread = Thread(target=udpflood_memory_resetter)
 
 """
 ARP SPOOFING DETECTOR
 """
 
 arp_request_memory = {}
+arp_spoof_memory = {}
+arp_spoof_memory_resettable = True
 
 
 # main function for arp spoof detection
@@ -705,9 +723,7 @@ def arp_spoof_processor(packet):
 
     # op = 1 is request packet
     if arp_op == 1:
-        store_arp_request_thread = threading.Thread(
-            target=store_arp_request, args=(packet,)
-        )
+        store_arp_request_thread = Thread(target=store_arp_request, args=(packet,))
         store_arp_request_thread.start()
 
     # op =2 is reply packet
@@ -728,18 +744,30 @@ def arp_spoof_processor(packet):
 
             # if invalid reply doesn't match arp table, calls as arp spoof packet
             if not not_spoof_packet:
-                arp_spoof_logger(packet)
-                mark_arp_spoof_thread = threading.Thread(
-                    target=mark_arp_spoof, args=(5,)
-                )
+                update_arp_spoof_memory(packet)
+
+                mark_arp_spoof_thread = Thread(target=mark_arp_spoof)
                 mark_arp_spoof_thread.start()
 
 
-def mark_arp_spoof(time_between):
+def update_arp_spoof_memory(packet):
+    attacker = packet.src
+    target = packet.dst
+
+    interaction_name = attacker + ", " + target
+
+    if interaction_name not in arp_spoof_memory:
+        arp_spoof_memory[interaction_name] = 0
+
+    arp_spoof_memory[interaction_name] += 1
+
+
+# to prevent arp table from updating while there is a arp spoof happening in the past 5 seconds (to prevent local arp table polluting)
+def mark_arp_spoof():
     global num_arp_spoof_packet
 
     num_arp_spoof_packet += 1
-    time.sleep(time_between)
+    time.sleep(5)
     num_arp_spoof_packet -= 1
 
 
@@ -762,6 +790,12 @@ def store_arp_request(packet):
         if request_pdst == pdst:
             del arp_request_memory[request_psrc]["request_to"][i]
             del arp_request_memory[request_psrc]["src_mac"][i]
+
+    if (
+        len(arp_request_memory[request_psrc]["request_to"]) == 0
+        and arp_request_memory[request_psrc]["src_mac"] == 0
+    ):
+        del arp_request_memory[request_psrc]
 
 
 # takes arp reply packet to cross-check request packet with memory, returns True if matching request packet is found/reply is valid
@@ -821,11 +855,67 @@ def check_arp_table(ip, mac_address):
     return matches_arp_table
 
 
-# logs an arp spoof warning
-def arp_spoof_logger(packet):
-    attacker = packet.src
-    target = packet.dst
+def reset_arp_spoof_memory():
+    arp_spoof_memory.clear()
 
+
+def arp_spoof_memory_resetter():
+    while True:
+        time.sleep(MEMORY_RESET_TIME)
+
+        while True:
+
+            if arp_spoof_memory_resettable:
+                reset_arp_spoof_memory()
+                break
+
+            time.sleep(CHECK_RESETTABLE)
+
+
+arp_spoof_memory_resetter_thread = Thread(target=arp_spoof_memory_resetter)
+
+
+def arp_spoof_detector():
+    while True:
+        time.sleep(TIME_CHECK)
+
+        global arp_spoof_memory_resettable
+        arp_spoof_memory_resettable = False
+
+        arp_spoof_detected = False
+
+        for interaction_name in arp_spoof_memory:
+            src_and_dst = interaction_name.split(", ")
+            src_ip = src_and_dst[0]
+            dst_ip = src_and_dst[1]
+
+            if arp_spoof_memory[interaction_name] >= ARP_SPOOF_THRESHOLD:
+
+                arp_spoof_detected = True
+
+                arp_spoof_logger(src_ip, dst_ip)
+
+            if arp_spoof_memory[interaction_name] > 0:
+                if VERBOSE >= 1:
+                    logging(
+                        str(arp_spoof_memory[interaction_name])
+                        + " spoofed ARP packets sent from "
+                        + src_ip
+                        + " to "
+                        + dst_ip
+                    )
+
+        arp_spoof_memory_resettable = True
+
+        if arp_spoof_detected:
+            reset_arp_spoof_memory()
+
+
+arp_spoof_detector_thread = Thread(target=arp_spoof_detector)
+
+
+# logs an arp spoof warning
+def arp_spoof_logger(attacker, target):
     if VERBOSE >= 0:
         detect_attack_logs("ARP spoofing", attacker, target)
 
@@ -834,9 +924,9 @@ def arp_spoof_logger(packet):
 DNS Amplification detector
 """
 
-
-# dns_query_record = {}
+dns_amp_memory_resettable = True
 dns_amp_target_and_attacker = {}
+interaction_dns_amp_memory = {}
 
 
 def dns_amp_processor(packet):
@@ -851,9 +941,25 @@ def dns_amp_processor(packet):
 
     # dns response packets
     if packet.getlayer(scp.UDP).sport == 53:
-        if packet.len >= DNS_AMP_THRESHOLD:
+        if packet.len >= DNS_REPLY_BYTE_THRESHOLD:
+            attacker_mac = "UNKNOWN"
+
             attacker = get_dns_amp_attacker(packet)
-            dns_amp_logger(packet, attacker)
+
+            if attacker:
+                attacker_mac = attacker
+
+            target_mac = packet.dst
+            update_interaction_dns_amp_memory(target_mac, attacker_mac)
+
+
+def update_interaction_dns_amp_memory(target_mac, attacker_mac):
+    interaction_name = attacker_mac + ", " + target_mac
+
+    if interaction_name not in interaction_dns_amp_memory:
+        interaction_dns_amp_memory[interaction_name] = 0
+
+    interaction_dns_amp_memory[interaction_name] += 1
 
 
 def get_dns_amp_attacker(packet):
@@ -881,15 +987,65 @@ def update_dns_amp_target_and_attacker(packet):
         dns_amp_target_and_attacker[target_ip] = attacket_mac
 
 
-def dns_amp_logger(packet, attacker):
-    if VERBOSE >= 0:
+def reset_dns_amp_memory():
+    dns_amp_target_and_attacker.clear()
+    interaction_dns_amp_memory.clear()
 
-        source = "UNKNOWN"
 
-        if attacker:
-            source = attacker
+def dns_amp_detector():
+    while True:
+        time.sleep(TIME_CHECK)
 
-        detect_attack_logs("DNS amplification", source, packet.dst)
+        global dns_amp_memory_resettable
+        dns_amp_memory_resettable = False
+
+        dns_amp_detected = False
+
+        for interaction_name in interaction_dns_amp_memory:
+
+            attacker_and_target_mac = interaction_name.split(", ")
+            src_mac = attacker_and_target_mac[0]
+            dst_mac = attacker_and_target_mac[1]
+
+            if interaction_dns_amp_memory[interaction_name] >= DNS_AMP_THRESHOLD:
+
+                dns_amp_detected = True
+
+                if VERBOSE >= 0:
+                    detect_attack_logs("DNS amplification", src_mac, dst_mac)
+
+            if VERBOSE >= 1:
+                logging(
+                    str(interaction_dns_amp_memory[interaction_name])
+                    + " DNS reply packets detected that exceed minimum bytes threshold sent from "
+                    + src_mac
+                    + " to "
+                    + dst_mac
+                )
+
+        dns_amp_memory_resettable = True
+
+        if dns_amp_detected:
+            reset_dns_amp_memory()
+
+
+dns_amp_detector_thread = Thread(target=dns_amp_detector)
+
+
+def dns_amp_memory_resetter():
+    while True:
+        time.sleep(MEMORY_RESET_TIME)
+
+        while True:
+
+            if dns_amp_memory_resettable:
+                reset_dns_amp_memory()
+                break
+
+            time.sleep(CHECK_RESETTABLE)
+
+
+dns_amp_memory_resetter_thread = Thread(target=dns_amp_memory_resetter)
 
 
 def check_spoof_dns_query(packet, arp_table):
@@ -940,6 +1096,14 @@ def detection_thread_starter():
     # udp flood
     udpflood_detector_thread.start()
     udpflood_memory_resetter_thread.start()
+
+    # arp spoof
+    arp_spoof_detector_thread.start()
+    arp_spoof_memory_resetter_thread.start()
+
+    # dns amplification
+    dns_amp_detector_thread.start()
+    dns_amp_memory_resetter_thread.start()
 
 
 if __name__ == "__main__":
