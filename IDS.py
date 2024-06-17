@@ -24,6 +24,7 @@ VERBOSE = 1  # log levels
 
 
 # Users can adjust with caution (affects the effectiveness and performance of the detection)
+ARP_SPOOF_THRESHOLD = 1
 MEMORY_RESET_TIME = 30  # seconds to reset the detection memory of packets
 CHECK_RESETTABLE = 0.5  # seconds to check if a detection memory is able to reset
 
@@ -709,6 +710,7 @@ ARP SPOOFING DETECTOR
 """
 
 arp_request_memory = {}
+arp_spoof_memory = {}
 
 
 # main function for arp spoof detection
@@ -746,17 +748,16 @@ def arp_spoof_processor(packet):
             # if invalid reply doesn't match arp table, calls as arp spoof packet
             if not not_spoof_packet:
                 arp_spoof_logger(packet)
-                mark_arp_spoof_thread = threading.Thread(
-                    target=mark_arp_spoof, args=(5,)
-                )
+                mark_arp_spoof_thread = threading.Thread(target=mark_arp_spoof)
                 mark_arp_spoof_thread.start()
 
 
-def mark_arp_spoof(time_between):
+# to prevent arp table from updating while there is a arp spoof happening in the past 5 seconds (to prevent local arp table polluting)
+def mark_arp_spoof():
     global num_arp_spoof_packet
 
     num_arp_spoof_packet += 1
-    time.sleep(time_between)
+    time.sleep(5)
     num_arp_spoof_packet -= 1
 
 
@@ -779,6 +780,12 @@ def store_arp_request(packet):
         if request_pdst == pdst:
             del arp_request_memory[request_psrc]["request_to"][i]
             del arp_request_memory[request_psrc]["src_mac"][i]
+
+    if (
+        len(arp_request_memory[request_psrc]["request_to"]) == 0
+        and arp_request_memory[request_psrc]["src_mac"] == 0
+    ):
+        del arp_request_memory[request_psrc]
 
 
 # takes arp reply packet to cross-check request packet with memory, returns True if matching request packet is found/reply is valid
@@ -839,9 +846,9 @@ def check_arp_table(ip, mac_address):
 
 
 # logs an arp spoof warning
-def arp_spoof_logger(packet):
-    attacker = packet.src
-    target = packet.dst
+def arp_spoof_logger(attacker, target):
+    # attacker = packet.src
+    # target = packet.dst
 
     if VERBOSE >= 0:
         detect_attack_logs("ARP spoofing", attacker, target)
