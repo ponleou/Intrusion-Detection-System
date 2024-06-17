@@ -49,7 +49,7 @@ Windows:
 cd attack_and_simulation \
 python synflood_simulation.py
 ```
-MacOS or Linux
+MacOS or Linux:
 ```
 cd attack_and_simulation \
 python3 synflood_simulation.py
@@ -60,7 +60,7 @@ Windows:
 cd attack_and_simulation \
 python udpflood_simulation.py
 ```
-MacOS or Linux
+MacOS or Linux:
 ```
 cd attack_and_simulation \
 python3 udpflood_simulation.py
@@ -71,7 +71,7 @@ Windows:
 cd attack_and_simulation \
 python portscan_simulation.py
 ```
-MacOS or Linux
+MacOS or Linux:
 ```
 cd attack_and_simulation \
 python3 portscan_simulation.py
@@ -82,7 +82,7 @@ Windows:
 cd attack_and_simulation \
 python davidbombal_portscan_attack.py
 ```
-MacOS or Linux
+MacOS or Linux:
 ```
 cd attack_and_simulation \
 python3 davidbombal_portscan_attack.py
@@ -93,7 +93,7 @@ Windows:
 cd attack_and_simulation \
 python arp_spoofing_simulation.py
 ```
-MacOS or Linux
+MacOS or Linux:
 ```
 cd attack_and_simulation \
 python3 arp_spoofing_simulation.py
@@ -104,7 +104,7 @@ Windows:
 cd attack_and_simulation \
 python dns_amplification_simulation.py
 ```
-MacOS or Linux
+MacOS or Linux:
 ```
 cd attack_and_simulation \
 python3 dns_amplification_simulation.py
