@@ -11,10 +11,10 @@ GLOBAL VARIABLES
 SYNFLOOD_THRESHOLD = 100  # minimum number of missing packets in the period of MEMORY_RESET_TIME to alert detection of SYN flood (higher means less sensitive)
 UDPFLOOD_THRESHOLD = 100  # minimum number of ICMP packets in response to UDP packets in the peroid of MEMORY_RESET_TIME to alert UDP flood (higher means less sensitive)
 PORT_SCAN_THRESHOLD = 50  # minimum number of unique accessed ports to alert port scan (higher means less sentitive)
-DNS_AMP_THRESHOLD = 5
+DNS_AMP_THRESHOLD = 5  # minimum number of DNS amplification packets in the peroid of MEMORY_RESET_TIME to trigger detection (higher means less sensitive)
 DNS_REPLY_BYTE_THRESHOLD = 500  # minimum bytes a dns response packet size can be to trigger detector (higher means less sensitive)
 
-TIME_CHECK = 0.2  # seconds for detection check (lower time means less sensitive) for SYNFLOOD, UDPFLOOD and Port scan
+TIME_CHECK = 0.2  # seconds for detection check (lower time means less sensitive)
 
 VERBOSE = 0  # log levels
 # from 0 to 1
