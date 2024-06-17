@@ -40,3 +40,72 @@ The IDS allows for adjustments to global variables to optimise detection sensiti
 Other global variables that are adjustable, but not recommended:
 - `MEMORY_RESET_TIME`: the time in seconds to store packet information for "detection system memories" before clearing/resetting
 - `CHECK_RESETTABLE`: the time in seconds to check if a detection system memory is clearable/resettable
+
+## Attack simulations
+Attack simulations include SYN flood, UDP flood, ARP spoofing, DNS amplification, and port scanning attacks that can be used on the device with the IDS to test for detection.
+### SYN flood attack
+Windows:
+```
+cd attack_and_simulation \
+python synflood_simulation.py
+```
+MacOS or Linux
+```
+cd attack_and_simulation \
+python3 synflood_simulation.py
+```
+### UDP flood attack
+Windows:
+```
+cd attack_and_simulation \
+python udpflood_simulation.py
+```
+MacOS or Linux
+```
+cd attack_and_simulation \
+python3 udpflood_simulation.py
+```
+### Port scanning attack
+Windows:
+```
+cd attack_and_simulation \
+python portscan_simulation.py
+```
+MacOS or Linux
+```
+cd attack_and_simulation \
+python3 portscan_simulation.py
+```
+Or use the attack provided by [@davidbombal](https://github.com/davidbombal)
+Windows:
+```
+cd attack_and_simulation \
+python davidbombal_portscan_attack.py
+```
+MacOS or Linux
+```
+cd attack_and_simulation \
+python3 davidbombal_portscan_attack.py
+```
+### ARP spoofing attack
+Windows:
+```
+cd attack_and_simulation \
+python arp_spoofing_simulation.py
+```
+MacOS or Linux
+```
+cd attack_and_simulation \
+python3 arp_spoofing_simulation.py
+```
+### DNS amplification attack
+Windows:
+```
+cd attack_and_simulation \
+python dns_amplification_simulation.py
+```
+MacOS or Linux
+```
+cd attack_and_simulation \
+python3 dns_amplification_simulation.py
+```
