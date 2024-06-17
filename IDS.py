@@ -11,11 +11,12 @@ GLOBAL VARIABLES
 SYNFLOOD_THRESHOLD = 100  # minimum number of missing packets in the period of MEMORY_RESET_TIME to alert detection of SYN flood (Higher means less sensitive)
 UDPFLOOD_THRESHOLD = 100  # minimum number of ICMP packets in response to UDP packets in the peroid of MEMORY_RESET_TIME to alert UDP flood (higher means less sensitive)
 PORT_SCAN_THRESHOLD = 50  # minimum number of unique accessed ports to alert port scan (higher means less sentitive)
-DNS_AMP_THRESHOLD = 500  # minimum bytes a dns response packet size can be to trigger detector (higher means less sensitive)
+DNS_AMP_THRESHOLD = 5
+DNS_REPLY_BYTE_THRESHOLD = 500  # minimum bytes a dns response packet size can be to trigger detector (higher means less sensitive)
 
 TIME_CHECK = 0.2  # seconds for detection check (lower time means less sensitive) for SYNFLOOD, UDPFLOOD and Port scan
 
-VERBOSE = 0  # log levels
+VERBOSE = 1  # log levels
 # from 0 to 1
 # -1 for no logs
 # 0 for attack detection logs only (recommended)
@@ -386,16 +387,32 @@ def synflood_detector():
         synflood_detected = False
 
         for interaction_name in interaction_synflood_memory:
+            src_and_dst = interaction_name.split(", ")
+            synflood_src = src_and_dst[0]
+            synflood_dst = src_and_dst[1]
+
             if (
                 len(interaction_synflood_memory[interaction_name]["seq_num"])
                 >= SYNFLOOD_THRESHOLD
             ):
+
                 synflood_detected = True
 
-                src_and_dst = interaction_name.split(", ")
-                synflood_src = src_and_dst[0]
-                synflood_dst = src_and_dst[1]
                 log_synflood(synflood_src, synflood_dst)
+
+            if len(interaction_synflood_memory[interaction_name]["seq_num"]) > 0:
+                if VERBOSE >= 1:
+                    logging(
+                        str(
+                            len(
+                                interaction_synflood_memory[interaction_name]["seq_num"]
+                            )
+                        )
+                        + " SYN packets from "
+                        + synflood_src
+                        + " without ACK reply from "
+                        + synflood_dst
+                    )
 
         if synflood_detected:
             reset_synflood_memory()
@@ -834,9 +851,9 @@ def arp_spoof_logger(packet):
 DNS Amplification detector
 """
 
-
-# dns_query_record = {}
+dns_amp_memory_resettable = True
 dns_amp_target_and_attacker = {}
+interaction_dns_amp_memory = {}
 
 
 def dns_amp_processor(packet):
@@ -851,9 +868,25 @@ def dns_amp_processor(packet):
 
     # dns response packets
     if packet.getlayer(scp.UDP).sport == 53:
-        if packet.len >= DNS_AMP_THRESHOLD:
+        if packet.len >= DNS_REPLY_BYTE_THRESHOLD:
+            attacker_mac = "UNKNOWN"
+
             attacker = get_dns_amp_attacker(packet)
-            dns_amp_logger(packet, attacker)
+
+            if attacker:
+                attacker_mac = attacker
+
+            target_mac = packet.dst
+            update_interaction_dns_amp_memory(target_mac, attacker_mac)
+
+
+def update_interaction_dns_amp_memory(target_mac, attacker_mac):
+    interaction_name = attacker_mac + ", " + target_mac
+
+    if interaction_name not in interaction_dns_amp_memory:
+        interaction_dns_amp_memory[interaction_name] = 0
+
+    interaction_dns_amp_memory[interaction_name] += 1
 
 
 def get_dns_amp_attacker(packet):
@@ -881,15 +914,65 @@ def update_dns_amp_target_and_attacker(packet):
         dns_amp_target_and_attacker[target_ip] = attacket_mac
 
 
-def dns_amp_logger(packet, attacker):
-    if VERBOSE >= 0:
+def reset_dns_amp_memory():
+    dns_amp_target_and_attacker.clear()
+    interaction_dns_amp_memory.clear()
 
-        source = "UNKNOWN"
 
-        if attacker:
-            source = attacker
+def dns_amp_detector():
+    while True:
+        time.sleep(TIME_CHECK)
 
-        detect_attack_logs("DNS amplification", source, packet.dst)
+        global dns_amp_memory_resettable
+        dns_amp_memory_resettable = False
+
+        dns_amp_detected = False
+
+        for interaction_name in interaction_dns_amp_memory:
+
+            attacker_and_target_mac = interaction_name.split(", ")
+            src_mac = attacker_and_target_mac[0]
+            dst_mac = attacker_and_target_mac[1]
+
+            if interaction_dns_amp_memory[interaction_name] >= DNS_AMP_THRESHOLD:
+
+                dns_amp_detected = True
+
+                if VERBOSE >= 0:
+                    detect_attack_logs("DNS amplification", src_mac, dst_mac)
+
+            if VERBOSE >= 1:
+                logging(
+                    str(interaction_dns_amp_memory[interaction_name])
+                    + " DNS reply packets detected that exceed minimum bytes threshold sent from "
+                    + src_mac
+                    + " to "
+                    + dst_mac
+                )
+
+        dns_amp_memory_resettable = True
+
+        if dns_amp_detected:
+            reset_dns_amp_memory()
+
+
+dns_amp_detector_thread = threading.Thread(target=dns_amp_detector)
+
+
+def dns_amp_memory_resetter():
+    while True:
+        time.sleep(MEMORY_RESET_TIME)
+
+        while True:
+
+            if dns_amp_memory_resettable:
+                reset_dns_amp_memory()
+                break
+
+            time.sleep(CHECK_RESETTABLE)
+
+
+dns_amp_memory_resetter_thread = threading.Thread(target=dns_amp_memory_resetter)
 
 
 def check_spoof_dns_query(packet, arp_table):
@@ -940,6 +1023,10 @@ def detection_thread_starter():
     # udp flood
     udpflood_detector_thread.start()
     udpflood_memory_resetter_thread.start()
+
+    # dns amplification
+    dns_amp_detector_thread.start()
+    dns_amp_memory_resetter_thread.start()
 
 
 if __name__ == "__main__":
