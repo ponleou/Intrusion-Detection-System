@@ -111,3 +111,6 @@ MacOS or Linux:
 cd attack_and_simulation \
 sudo python3 dns_amplification_simulation.py
 ```
+
+## Demonstration
+Watch this [YouTube video](https://youtu.be/d4lKryjiN84) for a demonstration of how to use the IDS.
