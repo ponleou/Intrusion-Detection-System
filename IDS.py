@@ -8,7 +8,7 @@ import json
 GLOBAL VARIABLES
 """
 # Users can adjust these values
-SYNFLOOD_THRESHOLD = 100  # minimum number of missing packets in the period of MEMORY_RESET_TIME to alert detection of SYN flood (Higher means less sensitive)
+SYNFLOOD_THRESHOLD = 100  # minimum number of missing packets in the period of MEMORY_RESET_TIME to alert detection of SYN flood (higher means less sensitive)
 UDPFLOOD_THRESHOLD = 100  # minimum number of ICMP packets in response to UDP packets in the peroid of MEMORY_RESET_TIME to alert UDP flood (higher means less sensitive)
 PORT_SCAN_THRESHOLD = 50  # minimum number of unique accessed ports to alert port scan (higher means less sentitive)
 DNS_AMP_THRESHOLD = 5
@@ -24,7 +24,7 @@ VERBOSE = 0  # log levels
 
 
 # Users can adjust with caution (affects the effectiveness and performance of the detection)
-ARP_SPOOF_THRESHOLD = 1
+ARP_SPOOF_THRESHOLD = 1  # minimum number of arp spoofing packets in the period of MEMORY_RESET_TIME to trigger detection of arp spoofing (higher means less sensitive)
 MEMORY_RESET_TIME = 30  # seconds to reset the detection memory of packets
 CHECK_RESETTABLE = 0.5  # seconds to check if a detection memory is able to reset
 
