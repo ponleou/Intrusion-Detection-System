@@ -76,7 +76,7 @@ MacOS or Linux
 cd attack_and_simulation \
 python3 portscan_simulation.py
 ```
-Or use the attack provided by [@davidbombal](https://github.com/davidbombal)
+Or use the attack provided by [@davidbombal](https://github.com/davidbombal): <br />
 Windows:
 ```
 cd attack_and_simulation \
