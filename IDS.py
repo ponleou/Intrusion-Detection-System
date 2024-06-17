@@ -896,13 +896,14 @@ def arp_spoof_detector():
                 arp_spoof_logger(src_ip, dst_ip)
 
             if arp_spoof_memory[interaction_name] > 0:
-                logging(
-                    str(arp_spoof_memory[interaction_name])
-                    + " spoofed ARP packets sent from "
-                    + src_ip
-                    + " to "
-                    + dst_ip
-                )
+                if VERBOSE >= 1:
+                    logging(
+                        str(arp_spoof_memory[interaction_name])
+                        + " spoofed ARP packets sent from "
+                        + src_ip
+                        + " to "
+                        + dst_ip
+                    )
 
         arp_spoof_memory_resettable = True
 
